@@ -22,8 +22,7 @@ import {
   Home,
   Building2,
   CreditCard,
-  FileText,
-  Shield
+  FileText
 } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 
@@ -81,12 +80,8 @@ export default function SignUp() {
     monthlyIncome: '',
     yearsOfEmployment: '',
     
-    // Step 4: Document Upload
-    primaryId: null,
-    
-    // Step 5: Final Consent
-    dataPrivacyConsent: false,
-    termsAndConditions: false
+    // Step 4: Document Upload - will store file references
+    primaryId: null
   })
 
   const regions = [
@@ -212,24 +207,13 @@ export default function SignUp() {
           return false
         }
         break
-        
-      case 5:
-        if (!formData.dataPrivacyConsent) {
-          setError('Please provide consent for data privacy')
-          return false
-        }
-        if (!formData.termsAndConditions) {
-          setError('Please agree to the terms and conditions')
-          return false
-        }
-        break
     }
     return true
   }
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
-      setCurrentStep(prev => Math.min(prev + 1, 5))
+      setCurrentStep(prev => Math.min(prev + 1, 4))
     }
   }
 
@@ -240,7 +224,7 @@ export default function SignUp() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    if (!validateStep(5)) return
+    if (!validateStep(4)) return
     
     setLoading(true)
     setError('')
@@ -257,7 +241,7 @@ export default function SignUp() {
         lastName: formData.lastName,
         name: `${formData.firstName} ${formData.lastName}`,
         profileComplete: true,
-        accountStatus: 'pending_verification',
+        accountStatus: 'pending_verification', // Will be verified after document review
         personalInfo: {
           middleName: formData.middleName,
           suffix: formData.suffix,
@@ -297,11 +281,6 @@ export default function SignUp() {
         documents: {
           primaryId: formData.primaryId,
           uploadedFiles: uploadedFiles
-        },
-        consents: {
-          dataPrivacyConsent: formData.dataPrivacyConsent,
-          termsAndConditions: formData.termsAndConditions,
-          consentDate: new Date().toISOString()
         },
         registrationDate: new Date().toISOString()
       }
@@ -703,6 +682,60 @@ export default function SignUp() {
               
               <div className="grid md:grid-cols-2 gap-4 mb-4">
                 <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Unit/House # *</label>
+                  <input 
+                    type="text" 
+                    name="homeUnit" 
+                    value={formData.homeUnit} 
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                    placeholder="123"
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Street *</label>
+                  <input 
+                    type="text" 
+                    name="homeStreet" 
+                    value={formData.homeStreet} 
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                    placeholder="Rizal Street"
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Barangay *</label>
+                  <input 
+                    type="text" 
+                    name="homeBarangay" 
+                    value={formData.homeBarangay} 
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                    placeholder="Barangay Poblacion"
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">City/Municipality *</label>
+                  <input 
+                    type="text" 
+                    name="homeCity" 
+                    value={formData.homeCity} 
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                    placeholder="Manila"
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Province *</label>
                   <input 
                     type="text" 
@@ -849,7 +882,7 @@ export default function SignUp() {
               <div className="mt-4">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Income</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">₱</span>
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">â‚±</span>
                   <input 
                     type="number" 
                     name="monthlyIncome" 
@@ -877,10 +910,10 @@ export default function SignUp() {
             <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
               <h4 className="font-medium text-amber-900 mb-2">Upload Requirements</h4>
               <ul className="text-sm text-amber-700 space-y-1">
-                <li>• Accepted formats: JPG, PNG, PDF</li>
-                <li>• Maximum file size: 5MB</li>
-                <li>• Ensure document is clear and readable</li>
-                <li>• All information must be visible</li>
+                <li>â€¢ Accepted formats: JPG, PNG, PDF</li>
+                <li>â€¢ Maximum file size: 5MB</li>
+                <li>â€¢ Ensure document is clear and readable</li>
+                <li>â€¢ All information must be visible</li>
               </ul>
             </div>
 
@@ -961,100 +994,11 @@ export default function SignUp() {
             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
               <h4 className="font-medium text-green-900 mb-2">What happens next?</h4>
               <ul className="text-sm text-green-700 space-y-1">
-                <li>• Your account will be created instantly</li>
-                <li>• ID verification typically takes 1-2 business days</li>
-                <li>• You can start applying for loans immediately</li>
-                <li>• Additional documents may be requested during loan processing</li>
+                <li>â€¢ Your account will be created instantly</li>
+                <li>â€¢ ID verification typically takes 1-2 business days</li>
+                <li>â€¢ You can start applying for loans immediately</li>
+                <li>â€¢ Additional documents may be requested during loan processing</li>
               </ul>
-            </div>
-          </div>
-        )
-
-      case 5:
-        return (
-          <div className="space-y-6">
-            <div className="text-center mb-6">
-              <Shield className="w-12 h-12 text-red-600 mx-auto mb-3" />
-              <h3 className="text-xl font-semibold text-slate-900">Final Step</h3>
-              <p className="text-slate-600">Please review and confirm your consent</p>
-            </div>
-
-            {/* Consent Checkboxes */}
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 p-4 border border-slate-200 rounded-lg">
-                <input
-                  type="checkbox"
-                  id="dataPrivacyConsent"
-                  name="dataPrivacyConsent"
-                  checked={formData.dataPrivacyConsent}
-                  onChange={handleInputChange}
-                  className="w-4 h-4 text-red-600 border-slate-300 rounded focus:ring-red-500 mt-1 flex-shrink-0"
-                  required
-                />
-                <label htmlFor="dataPrivacyConsent" className="text-sm text-slate-700">
-                  <strong>Data Privacy Consent:</strong> I authorize BPI Direct BanKo to collect, process, store, and use my personal information for loan evaluation, credit scoring, and related banking services. I understand my rights under the Data Privacy Act and consent to the sharing of my information with authorized entities for creditworthiness assessment.
-                </label>
-              </div>
-
-              <div className="flex items-start gap-3 p-4 border border-slate-200 rounded-lg">
-                <input
-                  type="checkbox"
-                  id="termsAndConditions"
-                  name="termsAndConditions"
-                  checked={formData.termsAndConditions}
-                  onChange={handleInputChange}
-                  className="w-4 h-4 text-red-600 border-slate-300 rounded focus:ring-red-500 mt-1 flex-shrink-0"
-                  required
-                />
-                <label htmlFor="termsAndConditions" className="text-sm text-slate-700">
-                  <strong>Terms and Conditions:</strong> I confirm that all information provided is true, accurate, and complete. I understand that BPI Direct BanKo may withdraw any loan approval if information is found to be materially inaccurate. I agree to the applicable laws, BSP regulations, and policies of BPI Direct BanKo.
-                </label>
-              </div>
-            </div>
-
-            {/* Summary Information */}
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-              <h4 className="font-medium text-slate-900 mb-3">Application Summary</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-slate-600">Name:</span>
-                  <div className="font-medium text-slate-900">
-                    {formData.firstName} {formData.middleName} {formData.lastName} {formData.suffix}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-600">Email:</span>
-                  <div className="font-medium text-slate-900">{formData.email}</div>
-                </div>
-                <div>
-                  <span className="text-slate-600">Mobile:</span>
-                  <div className="font-medium text-slate-900">{formData.mobileNumber}</div>
-                </div>
-                <div>
-                  <span className="text-slate-600">Employment:</span>
-                  <div className="font-medium text-slate-900">{formData.employmentStatus}</div>
-                </div>
-                <div>
-                  <span className="text-slate-600">Address:</span>
-                  <div className="font-medium text-slate-900">
-                    {formData.homeCity}, {formData.homeProvince}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-600">ID Uploaded:</span>
-                  <div className="font-medium text-slate-900">
-                    {uploadedFiles.primaryId ? 'Yes' : 'No'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Final Notice */}
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-              <h4 className="font-medium text-blue-900 mb-2">Ready to create your account?</h4>
-              <p className="text-sm text-blue-700">
-                By clicking "Sign Up" below, you will create your SikAP account and can immediately start applying for loans. Your information will be securely stored and verified within 1-2 business days.
-              </p>
             </div>
           </div>
         )
@@ -1092,13 +1036,13 @@ export default function SignUp() {
       <div className="bg-white border-b border-slate-200">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-600">Step {currentStep} of 5</span>
-            <span className="text-sm text-slate-500">{Math.round((currentStep / 5) * 100)}% Complete</span>
+            <span className="text-sm font-medium text-slate-600">Step {currentStep} of 4</span>
+            <span className="text-sm text-slate-500">{Math.round((currentStep / 4) * 100)}% Complete</span>
           </div>
           <div className="w-full bg-slate-200 rounded-full h-2">
             <div 
               className="bg-gradient-to-r from-red-600 to-amber-500 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / 5) * 100}%` }}
+              style={{ width: `${(currentStep / 4) * 100}%` }}
             ></div>
           </div>
         </div>
@@ -1117,7 +1061,7 @@ export default function SignUp() {
             )}
 
             {/* Step Content */}
-            <form onSubmit={currentStep === 5 ? handleSubmit : (e) => e.preventDefault()}>
+            <form onSubmit={currentStep === 4 ? handleSubmit : (e) => e.preventDefault()}>
               {renderStepContent()}
 
               {/* Navigation Buttons */}
@@ -1132,7 +1076,7 @@ export default function SignUp() {
                   Previous
                 </Button>
 
-                {currentStep < 5 ? (
+                {currentStep < 4 ? (
                   <Button
                     type="button"
                     onClick={handleNext}
@@ -1155,7 +1099,7 @@ export default function SignUp() {
                     ) : (
                       <>
                         <CheckCircle className="w-4 h-4 mr-2" />
-                        Sign Up
+                        Complete Registration
                       </>
                     )}
                   </Button>
@@ -1165,7 +1109,7 @@ export default function SignUp() {
 
             {/* Step Indicators */}
             <div className="flex justify-center mt-6 space-x-2">
-              {[1, 2, 3, 4, 5].map((step) => (
+              {[1, 2, 3, 4].map((step) => (
                 <div
                   key={step}
                   className={`w-3 h-3 rounded-full transition-colors ${
