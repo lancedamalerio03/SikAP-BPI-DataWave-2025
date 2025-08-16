@@ -99,15 +99,20 @@ export function SikAPLanding() {
             {isAuthenticated && (
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-green-800 font-medium">
-                  You're signed in and ready to apply! Continue with your loan application.
+                  Welcome back, {user?.firstName || user?.name}! Ready to apply for a loan?
                 </p>
+                {user?.accountStatus === 'pending_verification' && (
+                  <p className="text-sm text-green-600 mt-1">
+                    Your account is pending verification. You can still apply for loans!
+                  </p>
+                )}
               </div>
             )}
 
             {!isAuthenticated && (
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-blue-800 font-medium">
-                  Sign in or create an account to start your loan application process.
+                  Create an account to start your loan application process with our AI-powered system.
                 </p>
               </div>
             )}
@@ -196,42 +201,52 @@ export function SikAPLanding() {
                   <div className="p-6 space-y-6">
                     <div className="text-center">
                       <h3 className="text-lg font-bold text-slate-900">
-                        {isAuthenticated ? 'Welcome Back!' : 'Loan Application'}
+                        {isAuthenticated ? 'Apply for Loan' : 'Quick Application'}
                       </h3>
                       <p className="text-sm text-slate-600">
-                        {isAuthenticated ? 'Ready to continue' : 'Step 1 of 8'}
+                        {isAuthenticated ? 'Tell us what you need' : 'Sign up to get started'}
                       </p>
                     </div>
 
                     <div className="space-y-4">
                       {isAuthenticated ? (
                         <>
-                          <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
-                            <User className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                            <span className="text-sm font-medium text-green-800">Signed in as {user?.email}</span>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Loan Amount</label>
+                            <div className="w-full p-3 border border-slate-300 rounded-lg bg-white">
+                              <span className="text-slate-900">₱50,000</span>
+                            </div>
                           </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Purpose</label>
+                            <div className="w-full p-3 border border-slate-300 rounded-lg bg-white">
+                              <span className="text-slate-900">Business expansion</span>
+                            </div>
+                          </div>
+
                           <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
-                            Continue Application →
+                            Submit Application →
                           </Button>
                         </>
                       ) : (
                         <>
                           <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Create Account</label>
                             <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
-                              <span className="text-slate-400">Sign in required</span>
+                              <span className="text-slate-400">Complete profile first</span>
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Mobile Number</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Apply for Loan</label>
                             <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
-                              <span className="text-slate-400">Sign in required</span>
+                              <span className="text-slate-400">Sign up required</span>
                             </div>
                           </div>
 
                           <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
-                            Sign In to Continue →
+                            Create Account →
                           </Button>
                         </>
                       )}

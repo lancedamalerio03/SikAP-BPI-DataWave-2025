@@ -5,7 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { SikAPLanding } from './components/SikAPLanding';
 import SignIn from './components/SignIn';
 import SignUp from './components/SignUp';
-import LoanApplication from './components/LoanApplication';
+import PreLoanApplication from './components/PreLoanApplication';
 import './index.css';
 
 function App() {
@@ -23,18 +23,26 @@ function App() {
               path="/application" 
               element={
                 <ProtectedRoute>
-                  <LoanApplication />
+                  <PreLoanApplication />
                 </ProtectedRoute>
               } 
             />
             
-            {/* You can add more protected routes here */}
+            {/* Future Routes - Commented for now */}
             {/* 
             <Route 
               path="/dashboard" 
               element={
                 <ProtectedRoute>
-                  <Dashboard />
+                  <UserDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/documents" 
+              element={
+                <ProtectedRoute requireVerification={true}>
+                  <DocumentPortal />
                 </ProtectedRoute>
               } 
             />
@@ -42,7 +50,7 @@ function App() {
               path="/profile" 
               element={
                 <ProtectedRoute>
-                  <Profile />
+                  <UserProfile />
                 </ProtectedRoute>
               } 
             />

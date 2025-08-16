@@ -28,17 +28,21 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
-  const login = (email, password) => {
+  const login = (email, password, profileData = null) => {
     // For MVP - simulate authentication
     // Later: Replace with actual API call
     return new Promise((resolve, reject) => {
       setTimeout(() => {
         if (email && password) {
-          const userData = {
+          const userData = profileData || {
             id: Date.now(),
             email: email,
             name: email.split('@')[0],
-            loginTime: new Date().toISOString()
+            firstName: email.split('@')[0],
+            lastName: 'User',
+            loginTime: new Date().toISOString(),
+            profileComplete: false,
+            accountStatus: 'pending_verification'
           };
           
           setUser(userData);
@@ -63,15 +67,20 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('sikap_auth');
   };
 
+  const updateUserProfile = (profileData) => {
+    const updatedUser = { ...user, ...profileData };
+    setUser(updatedUser);
+    localStorage.setItem('sikap_user', JSON.stringify(updatedUser));
+  };
+
   const value = {
     isAuthenticated,
     user,
     login,
     logout,
+    updateUserProfile,
     loading
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-
-
