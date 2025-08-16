@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Button } from "./ui/button"
 import { Card } from "./ui/card"
 import { Badge } from "./ui/badge"
@@ -18,10 +19,14 @@ import {
 } from "lucide-react"
 
 export function SikAPLanding() {
+  const navigate = useNavigate()
+
   const handleApplyNow = () => {
-    // For MVP - will navigate to application form
-    alert('Navigating to loan application form... (This will be implemented with React Router)')
-    // Later: navigate('/application')
+    navigate('/application')
+  }
+
+  const handleSignIn = () => {
+    navigate('/signin')
   }
 
   return (
@@ -35,7 +40,7 @@ export function SikAPLanding() {
               Powered by BPI BanKo
             </Badge>
           </div>
-          <Button variant="outline" className="border-red-600 text-red-600 hover:bg-red-50 bg-transparent">
+          <Button variant="outline" className="border-red-600 text-red-600 hover:bg-red-50 bg-transparent" onClick={handleSignIn}>
             Sign In
           </Button>
         </div>
