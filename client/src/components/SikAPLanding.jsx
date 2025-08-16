@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Button } from "./ui/button"
 import { Card } from "./ui/card"
 import { Badge } from "./ui/badge"
+import { useAuth } from "../contexts/AuthContext"
 import {
   Package,
   Brain,
@@ -16,10 +17,13 @@ import {
   Clock,
   Bot,
   Target,
+  LogOut,
+  User
 } from "lucide-react"
 
 export function SikAPLanding() {
   const navigate = useNavigate()
+  const { isAuthenticated, user, logout } = useAuth()
 
   const handleApplyNow = () => {
     navigate('/application')
@@ -27,6 +31,11 @@ export function SikAPLanding() {
 
   const handleSignIn = () => {
     navigate('/signin')
+  }
+
+  const handleLogout = () => {
+    logout()
+    // Optional: Show a success message
   }
 
   return (
@@ -40,9 +49,34 @@ export function SikAPLanding() {
               Powered by BPI BanKo
             </Badge>
           </div>
-          <Button variant="outline" className="border-red-600 text-red-600 hover:bg-red-50 bg-transparent" onClick={handleSignIn}>
-            Sign In
-          </Button>
+          
+          {/* Authentication Status */}
+          <div className="flex items-center gap-3">
+            {isAuthenticated ? (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <User className="w-4 h-4" />
+                  <span>Welcome, {user?.name || user?.email}</span>
+                </div>
+                <Button 
+                  variant="outline" 
+                  onClick={handleLogout}
+                  className="border-slate-300 text-slate-600 hover:bg-slate-50"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
+              </div>
+            ) : (
+              <Button 
+                variant="outline" 
+                className="border-red-600 text-red-600 hover:bg-red-50 bg-transparent" 
+                onClick={handleSignIn}
+              >
+                Sign In
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -60,6 +94,23 @@ export function SikAPLanding() {
                 history needed!
               </p>
             </div>
+
+            {/* Authentication-aware messaging */}
+            {isAuthenticated && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-800 font-medium">
+                  You're signed in and ready to apply! Continue with your loan application.
+                </p>
+              </div>
+            )}
+
+            {!isAuthenticated && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800 font-medium">
+                  Sign in or create an account to start your loan application process.
+                </p>
+              </div>
+            )}
 
             {/* Key Features */}
             <div className="grid sm:grid-cols-2 gap-4">
@@ -96,7 +147,7 @@ export function SikAPLanding() {
                 className="bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-700 hover:to-amber-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
                 onClick={handleApplyNow}
               >
-                Mag-apply Na!
+                {isAuthenticated ? 'Continue Application' : 'Mag-apply Na!'}
                 <ChevronRight className="w-5 h-5 ml-2" />
               </Button>
               <Button
@@ -144,37 +195,47 @@ export function SikAPLanding() {
                   {/* App Content */}
                   <div className="p-6 space-y-6">
                     <div className="text-center">
-                      <h3 className="text-lg font-bold text-slate-900">Loan Application</h3>
-                      <p className="text-sm text-slate-600">Step 1 of 4</p>
+                      <h3 className="text-lg font-bold text-slate-900">
+                        {isAuthenticated ? 'Welcome Back!' : 'Loan Application'}
+                      </h3>
+                      <p className="text-sm text-slate-600">
+                        {isAuthenticated ? 'Ready to continue' : 'Step 1 of 8'}
+                      </p>
                     </div>
 
                     <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
-                        <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
-                          <span className="text-slate-900">Juan dela Cruz</span>
-                        </div>
-                      </div>
+                      {isAuthenticated ? (
+                        <>
+                          <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                            <User className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                            <span className="text-sm font-medium text-green-800">Signed in as {user?.email}</span>
+                          </div>
+                          <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
+                            Continue Application →
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                            <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
+                              <span className="text-slate-400">Sign in required</span>
+                            </div>
+                          </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Mobile Number</label>
-                        <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
-                          <span className="text-slate-900">+63 917 123 4567</span>
-                        </div>
-                      </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Mobile Number</label>
+                            <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
+                              <span className="text-slate-400">Sign in required</span>
+                            </div>
+                          </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Business Type</label>
-                        <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50 flex justify-between items-center">
-                          <span className="text-slate-900">Sari-sari Store</span>
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
-                        </div>
-                      </div>
+                          <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
+                            Sign In to Continue →
+                          </Button>
+                        </>
+                      )}
                     </div>
-
-                    <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
-                      Next: Business Information →
-                    </Button>
                   </div>
                 </div>
               </div>

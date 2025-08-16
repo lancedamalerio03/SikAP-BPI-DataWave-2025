@@ -1,47 +1,74 @@
 import { useState } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { Button } from "./ui/button"
 import { Card } from "./ui/card"
 import { Badge } from "./ui/badge"
-import { ArrowLeft, Eye, EyeOff, Lock, User, Shield, AlertCircle } from "lucide-react"
+import { ArrowLeft, Eye, EyeOff, Lock, User, Shield, AlertCircle, Mail, UserPlus } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 
-export default function SignIn() {
+export default function SignUp() {
   const navigate = useNavigate()
-  const location = useLocation()
   const { login } = useAuth()
   
   const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
     email: '',
-    password: ''
+    password: '',
+    confirmPassword: '',
+    agreeToTerms: false
   })
 
-  // Get the page user was trying to access before being redirected to sign-in
-  const from = location.state?.from?.pathname || '/application'
-
   const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [name]: type === 'checkbox' ? checked : value
     })
     // Clear error when user starts typing
     if (error) setError('')
   }
 
-  const handleSignIn = async (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
+    // Basic validation
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match')
+      setLoading(false)
+      return
+    }
+
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters long')
+      setLoading(false)
+      return
+    }
+
+    if (!formData.agreeToTerms) {
+      setError('Please agree to the terms and conditions')
+      setLoading(false)
+      return
+    }
+
     try {
+      // For MVP - simulate account creation and auto sign-in
+      // Later: Replace with actual API call to create account
+      await new Promise(resolve => setTimeout(resolve, 1500)) // Simulate API delay
+      
+      // Auto sign-in after successful registration
       await login(formData.email, formData.password)
-      // Redirect to the page they were trying to access, or loan application
-      navigate(from, { replace: true })
+      
+      // Redirect to loan application
+      navigate('/application')
     } catch (err) {
-      setError('Invalid email or password. Please try again.')
+      setError('Failed to create account. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -81,22 +108,13 @@ export default function SignIn() {
           <Card className="p-8 shadow-lg border-red-100">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-gradient-to-r from-red-600 to-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Lock className="w-8 h-8 text-white" />
+                <UserPlus className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Welcome Back</h2>
-              <p className="text-slate-600">Sign in to access your loan application</p>
-              
-              {/* Show message if user was redirected from protected route */}
-              {location.state?.from && (
-                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-sm text-amber-700">
-                    Please sign in to continue with your loan application
-                  </p>
-                </div>
-              )}
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Create Account</h2>
+              <p className="text-slate-600">Start your loan application journey</p>
             </div>
 
-            <form onSubmit={handleSignIn} className="space-y-6">
+            <form onSubmit={handleSignUp} className="space-y-6">
               {/* Error Message */}
               {error && (
                 <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -105,13 +123,49 @@ export default function SignIn() {
                 </div>
               )}
 
+              {/* Name Fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="firstName" className="block text-sm font-medium text-slate-700 mb-2">
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    id="firstName"
+                    name="firstName"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                    placeholder="Juan"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="lastName" className="block text-sm font-medium text-slate-700 mb-2">
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    id="lastName"
+                    name="lastName"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                    placeholder="Dela Cruz"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
               {/* Email Field */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-2">
                   Email Address
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <input
                     type="email"
                     id="email"
@@ -140,9 +194,10 @@ export default function SignIn() {
                     value={formData.password}
                     onChange={handleInputChange}
                     className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
-                    placeholder="Enter your password"
+                    placeholder="At least 6 characters"
                     required
                     disabled={loading}
+                    minLength={6}
                   />
                   <button
                     type="button"
@@ -155,26 +210,53 @@ export default function SignIn() {
                 </div>
               </div>
 
-              {/* Remember Me & Forgot Password */}
-              <div className="flex items-center justify-between">
-                <label className="flex items-center">
+              {/* Confirm Password Field */}
+              <div>
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <input
-                    type="checkbox"
-                    className="w-4 h-4 text-red-600 border-slate-300 rounded focus:ring-red-500"
+                    type={showConfirmPassword ? "text" : "password"}
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                    className="w-full pl-10 pr-12 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                    placeholder="Confirm your password"
+                    required
                     disabled={loading}
                   />
-                  <span className="ml-2 text-sm text-slate-600">Remember me</span>
-                </label>
-                <button
-                  type="button"
-                  className="text-sm text-red-600 hover:text-red-700 font-medium"
-                  disabled={loading}
-                >
-                  Forgot password?
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    disabled={loading}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
               </div>
 
-              {/* Sign In Button */}
+              {/* Terms Agreement */}
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="agreeToTerms"
+                  name="agreeToTerms"
+                  checked={formData.agreeToTerms}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 text-red-600 border-slate-300 rounded focus:ring-red-500 mt-1"
+                  disabled={loading}
+                  required
+                />
+                <label htmlFor="agreeToTerms" className="text-sm text-slate-600">
+                  I agree to the <button type="button" className="text-red-600 hover:text-red-700 font-medium">Terms and Conditions</button> and <button type="button" className="text-red-600 hover:text-red-700 font-medium">Privacy Policy</button>
+                </label>
+              </div>
+
+              {/* Sign Up Button */}
               <Button
                 type="submit"
                 className="w-full bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-700 hover:to-amber-600 text-white shadow-lg py-3"
@@ -183,23 +265,13 @@ export default function SignIn() {
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Signing in...
+                    Creating account...
                   </>
                 ) : (
-                  'Sign In'
+                  'Create Account'
                 )}
               </Button>
             </form>
-
-            {/* Demo Credentials */}
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">Demo Credentials</h4>
-              <p className="text-sm text-blue-700 mb-2">For testing, use any email and password combination:</p>
-              <div className="text-xs text-blue-600 font-mono">
-                Email: demo@sikap.com<br />
-                Password: demo123
-              </div>
-            </div>
 
             {/* Divider */}
             <div className="my-6">
@@ -208,19 +280,19 @@ export default function SignIn() {
                   <div className="w-full border-t border-slate-300"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-slate-500">Don't have an account?</span>
+                  <span className="px-2 bg-white text-slate-500">Already have an account?</span>
                 </div>
               </div>
             </div>
 
-            {/* Sign Up Link */}
+            {/* Sign In Link */}
             <Button
               variant="outline"
-              onClick={() => navigate('/signup')}
+              onClick={() => navigate('/signin')}
               className="w-full border-red-600 text-red-600 hover:bg-red-50"
               disabled={loading}
             >
-              Create Account
+              Sign In Instead
             </Button>
 
             {/* Trust Badges */}
