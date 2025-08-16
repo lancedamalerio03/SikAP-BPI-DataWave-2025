@@ -18,12 +18,15 @@ import {
   Bot,
   Target,
   LogOut,
-  User
+  User,
+  Menu,
+  X
 } from "lucide-react"
 
 export function SikAPLanding() {
   const navigate = useNavigate()
   const { isAuthenticated, user, logout } = useAuth()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const handleApplyNow = () => {
     navigate('/application')
@@ -38,45 +41,164 @@ export function SikAPLanding() {
     // Optional: Show a success message
   }
 
+  const navigationItems = [
+    { name: 'Programs', href: '/programs' },
+    { name: 'About Us', href: '/about' },
+    { name: 'FAQs', href: '/faqs' },
+    { name: 'Contact Us', href: '/contact' }
+  ]
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-slate-200">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-red-600">SikAP</h1>
-            <Badge variant="secondary" className="bg-amber-500 text-white hover:bg-amber-600">
-              Powered by BPI BanKo
-            </Badge>
-          </div>
-          
-          {/* Authentication Status */}
-          <div className="flex items-center gap-3">
-            {isAuthenticated ? (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <User className="w-4 h-4" />
-                  <span>Welcome, {user?.name || user?.email}</span>
-                </div>
-                <Button 
-                  variant="outline" 
-                  onClick={handleLogout}
-                  className="border-slate-300 text-slate-600 hover:bg-slate-50"
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/95 border-b border-slate-200 shadow-sm">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-red-600">SikAP</h1>
+              <Badge variant="secondary" className="bg-amber-500 text-white hover:bg-amber-600">
+                Powered by BPI BanKo
+              </Badge>
+            </div>
+            
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center space-x-8">
+              {navigationItems.map((item) => (
+                <button
+                  key={item.name}
+                  onClick={() => navigate(item.href)}
+                  className="text-slate-600 hover:text-red-600 font-medium transition-colors"
                 >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Sign Out
-                </Button>
-              </div>
-            ) : (
-              <Button 
-                variant="outline" 
-                className="border-red-600 text-red-600 hover:bg-red-50 bg-transparent" 
-                onClick={handleSignIn}
-              >
-                Sign In
-              </Button>
-            )}
+                  {item.name}
+                </button>
+              ))}
+            </nav>
+
+            {/* Authentication Section */}
+            <div className="hidden md:flex items-center gap-3">
+              {isAuthenticated ? (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <User className="w-4 h-4" />
+                    <span>Welcome, {user?.firstName || user?.name || user?.email}</span>
+                  </div>
+                  <Button 
+                    onClick={() => navigate('/dashboard')}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    Dashboard
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleLogout}
+                    className="border-slate-300 text-slate-600 hover:bg-slate-50"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <Button 
+                    variant="outline" 
+                    className="border-red-600 text-red-600 hover:bg-red-50" 
+                    onClick={handleSignIn}
+                  >
+                    Sign In
+                  </Button>
+                  <Button 
+                    onClick={() => navigate('/signup')}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    Get Started
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile Menu Button */}
+            <button
+              className="md:hidden p-2 text-slate-600 hover:text-red-600"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
           </div>
+
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <div className="md:hidden mt-4 pb-4 border-t border-slate-200">
+              <nav className="flex flex-col space-y-3 mt-4">
+                {navigationItems.map((item) => (
+                  <button
+                    key={item.name}
+                    onClick={() => {
+                      navigate(item.href)
+                      setMobileMenuOpen(false)
+                    }}
+                    className="text-left text-slate-600 hover:text-red-600 font-medium py-2"
+                  >
+                    {item.name}
+                  </button>
+                ))}
+                
+                {/* Mobile Auth Section */}
+                <div className="flex flex-col space-y-3 pt-3 border-t border-slate-200">
+                  {isAuthenticated ? (
+                    <>
+                      <div className="flex items-center gap-2 text-sm text-slate-600 py-2">
+                        <User className="w-4 h-4" />
+                        <span>Welcome, {user?.firstName || user?.name || user?.email}</span>
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          navigate('/dashboard')
+                          setMobileMenuOpen(false)
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white w-full"
+                      >
+                        Dashboard
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          handleLogout()
+                          setMobileMenuOpen(false)
+                        }}
+                        className="border-slate-300 text-slate-600 hover:bg-slate-50 w-full"
+                      >
+                        <LogOut className="w-4 h-4 mr-2" />
+                        Sign Out
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button 
+                        variant="outline" 
+                        className="border-red-600 text-red-600 hover:bg-red-50 w-full" 
+                        onClick={() => {
+                          handleSignIn()
+                          setMobileMenuOpen(false)
+                        }}
+                      >
+                        Sign In
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          navigate('/signup')
+                          setMobileMenuOpen(false)
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white w-full"
+                      >
+                        Get Started
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </nav>
+            </div>
+          )}
         </div>
       </header>
 
@@ -159,9 +281,9 @@ export function SikAPLanding() {
                 size="lg"
                 variant="outline"
                 className="border-red-600 text-red-600 hover:bg-red-50 bg-transparent"
-                onClick={() => alert('Learn More content coming soon!')}
+                onClick={() => navigate('/programs')}
               >
-                Learn More
+                View Programs
               </Button>
             </div>
 
@@ -356,11 +478,13 @@ export function SikAPLanding() {
               Empowering Filipino micro-entrepreneurs through AI-powered financial inclusion
             </p>
             <div className="flex justify-center gap-6 text-sm text-slate-400">
+              <button onClick={() => navigate('/about')} className="hover:text-white">About Us</button>
+              <span>•</span>
+              <button onClick={() => navigate('/contact')} className="hover:text-white">Contact</button>
+              <span>•</span>
+              <button onClick={() => navigate('/faqs')} className="hover:text-white">FAQs</button>
+              <span>•</span>
               <span>BSP Regulated</span>
-              <span>•</span>
-              <span>Data Protected</span>
-              <span>•</span>
-              <span>BPI BanKo</span>
             </div>
           </div>
         </div>
