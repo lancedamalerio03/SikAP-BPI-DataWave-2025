@@ -1,7 +1,9 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Button } from "./ui/button"
 import { Card } from "./ui/card"
 import { Badge } from "./ui/badge"
+import { useAuth } from "../contexts/AuthContext"
 import {
   Package,
   Brain,
@@ -15,29 +17,188 @@ import {
   Clock,
   Bot,
   Target,
+  LogOut,
+  User,
+  Menu,
+  X
 } from "lucide-react"
 
 export function SikAPLanding() {
+  const navigate = useNavigate()
+  const { isAuthenticated, user, logout } = useAuth()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
   const handleApplyNow = () => {
-    // For MVP - will navigate to application form
-    alert('Navigating to loan application form... (This will be implemented with React Router)')
-    // Later: navigate('/application')
+    navigate('/application')
   }
+
+  const handleSignIn = () => {
+    navigate('/signin')
+  }
+
+  const handleLogout = () => {
+    logout()
+    // Optional: Show a success message
+  }
+
+  const navigationItems = [
+    { name: 'Programs', href: '/programs' },
+    { name: 'About Us', href: '/about' },
+    { name: 'FAQs', href: '/faqs' },
+    { name: 'Contact Us', href: '/contact' }
+  ]
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-slate-200">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-red-600">SikAP</h1>
-            <Badge variant="secondary" className="bg-amber-500 text-white hover:bg-amber-600">
-              Powered by BPI BanKo
-            </Badge>
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-white/95 border-b border-slate-200 shadow-sm">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-red-600">SikAP</h1>
+              <Badge variant="secondary" className="bg-amber-500 text-white hover:bg-amber-600">
+                Powered by BPI BanKo
+              </Badge>
+            </div>
+            
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center space-x-8">
+              {navigationItems.map((item) => (
+                <button
+                  key={item.name}
+                  onClick={() => navigate(item.href)}
+                  className="text-slate-600 hover:text-red-600 font-medium transition-colors"
+                >
+                  {item.name}
+                </button>
+              ))}
+            </nav>
+
+            {/* Authentication Section */}
+            <div className="hidden md:flex items-center gap-3">
+              {isAuthenticated ? (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <User className="w-4 h-4" />
+                    <span>Welcome, {user?.firstName || user?.name || user?.email}</span>
+                  </div>
+                  <Button 
+                    onClick={() => navigate('/dashboard')}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    Dashboard
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleLogout}
+                    className="border-slate-300 text-slate-600 hover:bg-slate-50"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <Button 
+                    variant="outline" 
+                    className="border-red-600 text-red-600 hover:bg-red-50" 
+                    onClick={handleSignIn}
+                  >
+                    Sign In
+                  </Button>
+                  <Button 
+                    onClick={() => navigate('/signup')}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    Get Started
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile Menu Button */}
+            <button
+              className="md:hidden p-2 text-slate-600 hover:text-red-600"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
           </div>
-          <Button variant="outline" className="border-red-600 text-red-600 hover:bg-red-50 bg-transparent">
-            Sign In
-          </Button>
+
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <div className="md:hidden mt-4 pb-4 border-t border-slate-200">
+              <nav className="flex flex-col space-y-3 mt-4">
+                {navigationItems.map((item) => (
+                  <button
+                    key={item.name}
+                    onClick={() => {
+                      navigate(item.href)
+                      setMobileMenuOpen(false)
+                    }}
+                    className="text-left text-slate-600 hover:text-red-600 font-medium py-2"
+                  >
+                    {item.name}
+                  </button>
+                ))}
+                
+                {/* Mobile Auth Section */}
+                <div className="flex flex-col space-y-3 pt-3 border-t border-slate-200">
+                  {isAuthenticated ? (
+                    <>
+                      <div className="flex items-center gap-2 text-sm text-slate-600 py-2">
+                        <User className="w-4 h-4" />
+                        <span>Welcome, {user?.firstName || user?.name || user?.email}</span>
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          navigate('/dashboard')
+                          setMobileMenuOpen(false)
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white w-full"
+                      >
+                        Dashboard
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          handleLogout()
+                          setMobileMenuOpen(false)
+                        }}
+                        className="border-slate-300 text-slate-600 hover:bg-slate-50 w-full"
+                      >
+                        <LogOut className="w-4 h-4 mr-2" />
+                        Sign Out
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button 
+                        variant="outline" 
+                        className="border-red-600 text-red-600 hover:bg-red-50 w-full" 
+                        onClick={() => {
+                          handleSignIn()
+                          setMobileMenuOpen(false)
+                        }}
+                      >
+                        Sign In
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          navigate('/signup')
+                          setMobileMenuOpen(false)
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white w-full"
+                      >
+                        Get Started
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </nav>
+            </div>
+          )}
         </div>
       </header>
 
@@ -55,6 +216,28 @@ export function SikAPLanding() {
                 history needed!
               </p>
             </div>
+
+            {/* Authentication-aware messaging */}
+            {isAuthenticated && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-800 font-medium">
+                  Welcome back, {user?.firstName || user?.name}! Ready to apply for a loan?
+                </p>
+                {user?.accountStatus === 'pending_verification' && (
+                  <p className="text-sm text-green-600 mt-1">
+                    Your account is pending verification. You can still apply for loans!
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!isAuthenticated && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800 font-medium">
+                  Create an account to start your loan application process with our AI-powered system.
+                </p>
+              </div>
+            )}
 
             {/* Key Features */}
             <div className="grid sm:grid-cols-2 gap-4">
@@ -91,16 +274,16 @@ export function SikAPLanding() {
                 className="bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-700 hover:to-amber-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
                 onClick={handleApplyNow}
               >
-                Mag-apply Na!
+                {isAuthenticated ? 'Continue Application' : 'Mag-apply Na!'}
                 <ChevronRight className="w-5 h-5 ml-2" />
               </Button>
               <Button
                 size="lg"
                 variant="outline"
                 className="border-red-600 text-red-600 hover:bg-red-50 bg-transparent"
-                onClick={() => alert('Learn More content coming soon!')}
+                onClick={() => navigate('/programs')}
               >
-                Learn More
+                View Programs
               </Button>
             </div>
 
@@ -139,37 +322,57 @@ export function SikAPLanding() {
                   {/* App Content */}
                   <div className="p-6 space-y-6">
                     <div className="text-center">
-                      <h3 className="text-lg font-bold text-slate-900">Loan Application</h3>
-                      <p className="text-sm text-slate-600">Step 1 of 4</p>
+                      <h3 className="text-lg font-bold text-slate-900">
+                        {isAuthenticated ? 'Apply for Loan' : 'Quick Application'}
+                      </h3>
+                      <p className="text-sm text-slate-600">
+                        {isAuthenticated ? 'Tell us what you need' : 'Sign up to get started'}
+                      </p>
                     </div>
 
                     <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
-                        <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
-                          <span className="text-slate-900">Juan dela Cruz</span>
-                        </div>
-                      </div>
+                      {isAuthenticated ? (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Loan Amount</label>
+                            <div className="w-full p-3 border border-slate-300 rounded-lg bg-white">
+                              <span className="text-slate-900">₱50,000</span>
+                            </div>
+                          </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Mobile Number</label>
-                        <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
-                          <span className="text-slate-900">+63 917 123 4567</span>
-                        </div>
-                      </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Purpose</label>
+                            <div className="w-full p-3 border border-slate-300 rounded-lg bg-white">
+                              <span className="text-slate-900">Business expansion</span>
+                            </div>
+                          </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Business Type</label>
-                        <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50 flex justify-between items-center">
-                          <span className="text-slate-900">Sari-sari Store</span>
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
-                        </div>
-                      </div>
+                          <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
+                            Submit Application →
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Create Account</label>
+                            <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
+                              <span className="text-slate-400">Complete profile first</span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Apply for Loan</label>
+                            <div className="w-full p-3 border border-slate-300 rounded-lg bg-slate-50">
+                              <span className="text-slate-400">Sign up required</span>
+                            </div>
+                          </div>
+
+                          <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
+                            Create Account →
+                          </Button>
+                        </>
+                      )}
                     </div>
-
-                    <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
-                      Next: Business Information →
-                    </Button>
                   </div>
                 </div>
               </div>
@@ -275,11 +478,13 @@ export function SikAPLanding() {
               Empowering Filipino micro-entrepreneurs through AI-powered financial inclusion
             </p>
             <div className="flex justify-center gap-6 text-sm text-slate-400">
+              <button onClick={() => navigate('/about')} className="hover:text-white">About Us</button>
+              <span>•</span>
+              <button onClick={() => navigate('/contact')} className="hover:text-white">Contact</button>
+              <span>•</span>
+              <button onClick={() => navigate('/faqs')} className="hover:text-white">FAQs</button>
+              <span>•</span>
               <span>BSP Regulated</span>
-              <span>•</span>
-              <span>Data Protected</span>
-              <span>•</span>
-              <span>BPI BanKo</span>
             </div>
           </div>
         </div>
