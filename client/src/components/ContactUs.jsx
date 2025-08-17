@@ -20,8 +20,10 @@ import {
   Linkedin,
   Twitter
 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 export default function Contact() {
+  const navigate = useNavigate()
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -36,8 +38,7 @@ export default function Contact() {
   const [error, setError] = useState('')
 
   const handleBackToHome = () => {
-    // navigate('/')
-    console.log('Navigating back to home')
+    navigate('/')
   }
 
   const handleInputChange = (e) => {

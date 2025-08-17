@@ -19,8 +19,10 @@ import {
   TrendingUp,
   Shield
 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 export default function Programs() {
+  const navigate = useNavigate()
   const [selectedProgram, setSelectedProgram] = useState(null)
 
   const loanPrograms = [
@@ -213,8 +215,7 @@ export default function Programs() {
   }
 
   const handleBackToHome = () => {
-    // navigate('/')
-    console.log('Navigating back to home')
+    navigate('/')
   }
 
   return (

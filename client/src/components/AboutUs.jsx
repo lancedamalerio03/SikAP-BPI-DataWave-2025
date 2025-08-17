@@ -18,11 +18,12 @@ import {
   Database,
   Lock
 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 export default function About() {
+  const navigate = useNavigate()
   const handleBackToHome = () => {
-    // navigate('/')
-    console.log('Navigating back to home')
+    navigate('/')
   }
 
   const teamMembers = [

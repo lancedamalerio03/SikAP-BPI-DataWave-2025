@@ -20,7 +20,7 @@ export default function SignIn() {
   })
 
   // Get the page user was trying to access before being redirected to sign-in
-  const from = location.state?.from?.pathname || '/application'
+  const from = location.state?.from?.pathname || '/dashboard'
 
   const handleInputChange = (e) => {
     setFormData({
