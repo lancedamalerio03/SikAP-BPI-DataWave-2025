@@ -28,7 +28,7 @@ import { useAuth } from "../contexts/AuthContext"
 
 export default function SignUp() {
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { signIn } = useAuth()
   
   const [currentStep, setCurrentStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
@@ -228,22 +228,15 @@ export default function SignUp() {
     
     setLoading(true)
     setError('')
-
+  
     try {
-      // Simulate API call to create account with all data
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // Prepare user data for authentication context
+      // Prepare user data for Supabase
       const userData = {
-        id: Date.now(),
         email: formData.email,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        name: `${formData.firstName} ${formData.lastName}`,
-        profileComplete: true,
-        accountStatus: 'pending_verification', // Will be verified after document review
         personalInfo: {
+          firstName: formData.firstName,
           middleName: formData.middleName,
+          lastName: formData.lastName,
           suffix: formData.suffix,
           dateOfBirth: formData.dateOfBirth,
           placeOfBirth: formData.placeOfBirth,
@@ -281,17 +274,17 @@ export default function SignUp() {
         documents: {
           primaryId: formData.primaryId,
           uploadedFiles: uploadedFiles
-        },
-        registrationDate: new Date().toISOString()
+        }
       }
-      
-      // Auto sign-in after successful registration
-      await login(formData.email, formData.password, userData)
+  
+      // Sign up with Supabase
+      await signUp(formData.email, formData.password, userData)
       
       // Redirect to dashboard
       navigate('/dashboard')
     } catch (err) {
-      setError('Failed to create account. Please try again.')
+      console.error('Registration error:', err)
+      setError(err.message || 'Failed to create account. Please try again.')
     } finally {
       setLoading(false)
     }

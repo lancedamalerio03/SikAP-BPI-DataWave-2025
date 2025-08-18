@@ -9,7 +9,7 @@ import { useAuth } from "../contexts/AuthContext"
 export default function SignIn() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login } = useAuth()
+  const { signIn } = useAuth()
   
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -35,12 +35,13 @@ export default function SignIn() {
     e.preventDefault()
     setLoading(true)
     setError('')
-
+  
     try {
-      await login(formData.email, formData.password)
-      // Redirect to the page they were trying to access, or loan application
+      await signIn(formData.email, formData.password)
+      // Redirect handled by auth state change in AuthContext
       navigate(from, { replace: true })
     } catch (err) {
+      console.error('Sign in error:', err)
       setError('Invalid email or password. Please try again.')
     } finally {
       setLoading(false)
