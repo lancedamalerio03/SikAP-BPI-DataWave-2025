@@ -13,6 +13,15 @@ import AboutUs from './components/AboutUs';
 import FAQ from './components/FAQ';
 import ContactUs from './components/ContactUs';
 
+// Dashboard imports
+import DashboardLayout from './components/DashboardLayout';
+import HomePage from './components/dashboard/HomePage';
+import PortfolioPage from './components/dashboard/PortfolioPage';
+import LoansPage from './components/dashboard/LoansPage';
+import AgentsPage from './components/dashboard/AgentsPage';
+import ChatbotPage from './components/dashboard/ChatbotPage';
+import ProfilePage from './components/dashboard/ProfilePage';
+
 import './index.css';
 
 function App() {
@@ -41,20 +50,23 @@ function App() {
               } 
             />
             
-            {/* Dashboard Route - Temporary placeholder */}
+            {/* Dashboard Routes - Protected with nested routing */}
             <Route 
               path="/dashboard" 
               element={
                 <ProtectedRoute>
-                  <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                    <div className="text-center">
-                      <h1 className="text-2xl font-bold text-slate-900 mb-4">Dashboard Coming Soon</h1>
-                      <p className="text-slate-600">We're building an amazing dashboard for you!</p>
-                    </div>
-                  </div>
+                  <DashboardLayout />
                 </ProtectedRoute>
-              } 
-            />
+              }
+            >
+              <Route index element={<HomePage />} />
+              <Route path="home" element={<HomePage />} />
+              <Route path="portfolio" element={<PortfolioPage />} />
+              <Route path="loans" element={<LoansPage />} />
+              <Route path="agents" element={<AgentsPage />} />
+              <Route path="chatbot" element={<ChatbotPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+            </Route>
             
             {/* Future Routes - Commented for now */}
             {/* 
@@ -63,14 +75,6 @@ function App() {
               element={
                 <ProtectedRoute requireVerification={true}>
                   <DocumentPortal />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/profile" 
-              element={
-                <ProtectedRoute>
-                  <UserProfile />
                 </ProtectedRoute>
               } 
             />
