@@ -13,7 +13,7 @@ import AboutUs from './components/AboutUs';
 import FAQ from './components/FAQ';
 import ContactUs from './components/ContactUs';
 
-// Dashboard imports
+// Dashboard imports (User/Borrower Dashboard)
 import DashboardLayout from './components/DashboardLayout';
 import HomePage from './components/dashboard/HomePage';
 import PortfolioPage from './components/dashboard/PortfolioPage';
@@ -21,6 +21,16 @@ import LoansPage from './components/dashboard/LoansPage';
 import AgentsPage from './components/dashboard/AgentsPage';
 import ChatbotPage from './components/dashboard/ChatbotPage';
 import ProfilePage from './components/dashboard/ProfilePage';
+
+// Loan Officer Dashboard imports
+import LoanOfficerDashboard from './components/officer/LoanOfficerDashboard';
+import AnalyticsTab from './components/officer/Analytics';
+import RiskPortfolioTab from './components/officer/RiskPortfolio';
+import LoanRequestsTab from './components/officer/LoanRequests';
+import ActivityLogTab from './components/officer/ActivityLog';
+import AIAgentsTab from './components/officer/AIAgents';
+import WorkflowTab from './components/officer/Workflow';
+import SettingsTab from './components/officer/Settings';
 
 import './index.css';
 
@@ -50,7 +60,7 @@ function App() {
               } 
             />
             
-            {/* Dashboard Routes - Protected with nested routing */}
+            {/* User/Borrower Dashboard Routes - Protected with nested routing */}
             <Route 
               path="/dashboard" 
               element={
@@ -67,6 +77,123 @@ function App() {
               <Route path="chatbot" element={<ChatbotPage />} />
               <Route path="profile" element={<ProfilePage />} />
             </Route>
+            
+            {/* Loan Officer Dashboard Routes - NEW ADDITION */}
+            <Route 
+              path="/officer" 
+              element={
+                <ProtectedRoute>
+                  <LoanOfficerDashboard />
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* Individual Loan Officer Dashboard Pages (Alternative Routing) */}
+            <Route 
+              path="/officer/analytics" 
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-50">
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                      <AnalyticsTab 
+                        triggerWebhook={(endpoint, data) => console.log('Webhook:', endpoint, data)}
+                        sendToAgent={(agent, loanId, data) => console.log('Agent:', agent, loanId, data)}
+                      />
+                    </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/officer/risk" 
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-50">
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                      <RiskPortfolioTab 
+                        triggerWebhook={(endpoint, data) => console.log('Webhook:', endpoint, data)}
+                        sendToAgent={(agent, loanId, data) => console.log('Agent:', agent, loanId, data)}
+                      />
+                    </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/officer/requests" 
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-50">
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                      <LoanRequestsTab 
+                        triggerWebhook={(endpoint, data) => console.log('Webhook:', endpoint, data)}
+                        sendToAgent={(agent, loanId, data) => console.log('Agent:', agent, loanId, data)}
+                      />
+                    </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/officer/activity" 
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-50">
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                      <ActivityLogTab 
+                        triggerWebhook={(endpoint, data) => console.log('Webhook:', endpoint, data)}
+                        sendToAgent={(agent, loanId, data) => console.log('Agent:', agent, loanId, data)}
+                      />
+                    </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/officer/agents" 
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-50">
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                      <AIAgentsTab 
+                        triggerWebhook={(endpoint, data) => console.log('Webhook:', endpoint, data)}
+                        sendToAgent={(agent, loanId, data) => console.log('Agent:', agent, loanId, data)}
+                      />
+                    </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/officer/workflow" 
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-50">
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                      <WorkflowTab 
+                        triggerWebhook={(endpoint, data) => console.log('Webhook:', endpoint, data)}
+                        sendToAgent={(agent, loanId, data) => console.log('Agent:', agent, loanId, data)}
+                      />
+                    </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/officer/settings" 
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-50">
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                      <SettingsTab 
+                        triggerWebhook={(endpoint, data) => console.log('Webhook:', endpoint, data)}
+                        sendToAgent={(agent, loanId, data) => console.log('Agent:', agent, loanId, data)}
+                      />
+                    </div>
+                  </div>
+                </ProtectedRoute>
+              } 
+            />
             
             {/* Future Routes - Commented for now */}
             {/* 
