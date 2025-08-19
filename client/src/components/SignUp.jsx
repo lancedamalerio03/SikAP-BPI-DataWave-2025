@@ -25,7 +25,7 @@ import { useAuth } from "../contexts/AuthContext"
 
 export default function SignUp() {
   const navigate = useNavigate()
-  const { signUp, signIn } = useAuth()
+  const { signUp } = useAuth()
   
   const [currentStep, setCurrentStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)

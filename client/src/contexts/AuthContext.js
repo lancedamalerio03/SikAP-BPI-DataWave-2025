@@ -210,9 +210,12 @@ export const AuthProvider = ({ children }) => {
       const formatString = (str) => {
         return str && str.trim() !== '' ? str : null
       }
+      const formatNumber = (num) => {
+        return num && num !== '' ? parseFloat(num) : null
+      }
   
-      // ONLY insert main profile for now
-      console.log('📝 AuthProvider: Inserting main profile only...')
+      // 1. Insert main profile
+      console.log('📝 AuthProvider: Inserting main profile...')
       const startTime = Date.now()
       
       const { data: profileData, error: profileError } = await supabase
@@ -251,16 +254,78 @@ export const AuthProvider = ({ children }) => {
       console.log('✅ Main profile inserted successfully!')
       console.log('📄 Profile data:', profileData)
   
-      // TODO: Later we'll add address, employment, and documents
-      // For now, just return success
+      // 2. Insert address data
+      if (userData.address) {
+        console.log('🏠 AuthProvider: Inserting address...')
+        const { error: addressError } = await supabase
+          .from('user_addresses')
+          .insert({
+            user_id: userId,
+            address_type: 'home', // Must be 'home', 'business', or 'billing'
+            unit_number: formatString(userData.address.homeUnit),
+            street_address: userData.address.homeStreet,
+            barangay: userData.address.homeBarangay,
+            city: userData.address.homeCity,
+            province: userData.address.homeProvince,
+            region: userData.address.homeRegion,
+            zip_code: userData.address.homeZipCode,
+            home_ownership: userData.address.homeOwnership,
+            length_of_stay: formatNumber(userData.address.lengthOfStay),
+            is_primary: true
+          })
+      
+        if (addressError) {
+          console.error('❌ Address insert error:', addressError)
+          throw addressError
+        }
+        console.log('✅ Address inserted successfully!')
+      }
   
+      // 3. Insert employment data
+      if (userData.employment) {
+        console.log('💼 AuthProvider: Inserting employment...')
+        const { error: employmentError } = await supabase
+          .from('user_employment')
+          .insert({
+            user_id: userId,
+            employment_status: userData.employment.employmentStatus,
+            occupation: formatString(userData.employment.occupation),
+            employer_name: formatString(userData.employment.employerName),
+            employer_address: formatString(userData.employment.employerAddress),
+            monthly_income: formatNumber(userData.employment.monthlyIncome),
+            years_of_employment: formatNumber(userData.employment.yearsOfEmployment),
+            is_current: true
+          })
+  
+        if (employmentError) {
+          console.error('❌ Employment insert error:', employmentError)
+          throw employmentError
+        }
+        console.log('✅ Employment inserted successfully!')
+      }
+  
+      // 4. Handle document uploads
+      if (userData.documents && userData.documents.uploadedFiles) {
+        console.log('📄 AuthProvider: Processing documents...')
+        await handleDocumentUploads(userId, userData.documents.uploadedFiles)
+        console.log('✅ Documents processed successfully!')
+      }
+  
+      // 5. Update profile completion status
+      await supabase
+        .from('users_profiles')
+        .update({ profile_complete: true })
+        .eq('id', userId)
+  
+      console.log('🎉 User profile creation completed successfully!')
       return profileData
+  
     } catch (error) {
       console.error('💥 Error creating user profile:', error)
       throw error
     }
   }
-  
+
   const handleDocumentUploads = async (userId, files) => {
     console.log('AuthProvider: Uploading documents for', userId)
     
