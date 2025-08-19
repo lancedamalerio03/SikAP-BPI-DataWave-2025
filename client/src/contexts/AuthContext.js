@@ -20,6 +20,17 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     console.log('AuthProvider: Initializing Supabase auth...')
     
+    // Check if we just signed out (add a flag to prevent auto re-login)
+    const justSignedOut = sessionStorage.getItem('sikap-signed-out')
+    if (justSignedOut) {
+      console.log('AuthProvider: Recently signed out, skipping session restore')
+      sessionStorage.removeItem('sikap-signed-out') // Clear the flag
+      setLoading(false)
+      return
+    }
+    
+    console.log('🔍 AuthContext: Checking for initial session...')
+    
     // Get initial session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
@@ -27,6 +38,8 @@ export const AuthProvider = ({ children }) => {
         setLoading(false)
         return
       }
+      
+      console.log('🔍 Initial session check:', session?.user?.email || 'No session')
       
       if (session?.user) {
         console.log('AuthProvider: Found existing session', session.user.email)
@@ -38,29 +51,39 @@ export const AuthProvider = ({ children }) => {
       }
       setLoading(false)
     })
-
+  
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('AuthProvider: Auth state changed', event, session?.user?.email)
+        console.log('🔄 Auth state changed:', event, session?.user?.email)
         
-        if (session?.user) {
+        if (event === 'SIGNED_OUT') {
+          console.log('✅ Confirmed signed out via Supabase')
+          setUser(null)
+          setIsAuthenticated(false)
+          return
+        }
+        
+        if (session?.user && event !== 'SIGNED_OUT') {
+          console.log('✅ User session found:', session.user.email)
           setUser(session.user)
           setIsAuthenticated(true)
           await fetchUserProfile(session.user.id)
         } else {
+          console.log('❌ No valid session')
           setUser(null)
           setIsAuthenticated(false)
         }
+        
         setLoading(false)
       }
     )
-
+  
     return () => {
       console.log('AuthProvider: Cleaning up auth listener')
       subscription.unsubscribe()
     }
-  }, [])
+  }, []) // Make sure this only runs once
 
   const fetchUserProfile = async (userId) => {
     try {
@@ -68,25 +91,19 @@ export const AuthProvider = ({ children }) => {
       
       const { data, error } = await supabase
         .from('users_profiles')
-        .select(`
-          *,
-          user_addresses(*),
-          user_employment(*),
-          user_documents(*),
-          connected_accounts(*)
-        `)
+        .select('*')  // Just get the basic profile first
         .eq('id', userId)
         .single()
-
+  
       if (error) {
         if (error.code === 'PGRST116') {
-          console.log('AuthProvider: No profile found for user, will create on first update')
+          console.log('AuthProvider: No profile found for user')
           return
         }
         throw error
       }
       
-      console.log('AuthProvider: Profile fetched successfully')
+      console.log('AuthProvider: Profile fetched successfully', data)
       setUser(prev => ({
         ...prev,
         profile: data,
@@ -145,100 +162,105 @@ export const AuthProvider = ({ children }) => {
     console.log('AuthProvider: Starting signout process')
     
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      // Set a flag to prevent auto re-login on component remount
+      sessionStorage.setItem('sikap-signed-out', 'true')
       
+      // Clear local state immediately
+      console.log('AuthProvider: Clearing local state...')
       setUser(null)
       setIsAuthenticated(false)
-      console.log('AuthProvider: Signout successful')
+      setLoading(false)
+      
+      // Clear Supabase storage completely
+      console.log('AuthProvider: Clearing ALL Supabase storage...')
+      
+      // Clear localStorage
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('supabase') || key.includes('sb-')) {
+          localStorage.removeItem(key)
+        }
+      })
+      
+      // Clear sessionStorage  
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.includes('supabase') || key.includes('sb-')) {
+          sessionStorage.removeItem(key)
+        }
+      })
+      
+      // Force Supabase signout
+      await supabase.auth.signOut({ scope: 'global' })
+      
+      console.log('AuthProvider: Complete signout finished')
+      
     } catch (error) {
       console.error('AuthProvider: Signout error:', error)
-      throw error
     }
   }
 
   const createUserProfile = async (userId, userData) => {
-    console.log('AuthProvider: Creating user profile for', userId)
+    console.log('🚀 AuthProvider: Starting profile creation for', userId)
+    console.log('📊 User data received:', userData)
     
     try {
-      // Insert main profile
+      // Helper functions
+      const formatDate = (dateString) => {
+        return dateString && dateString.trim() !== '' ? dateString : null
+      }
+      const formatString = (str) => {
+        return str && str.trim() !== '' ? str : null
+      }
+  
+      // ONLY insert main profile for now
+      console.log('📝 AuthProvider: Inserting main profile only...')
+      const startTime = Date.now()
+      
       const { data: profileData, error: profileError } = await supabase
         .from('users_profiles')
         .insert({
           id: userId,
           email: userData.email,
           first_name: userData.personalInfo.firstName,
-          middle_name: userData.personalInfo.middleName,
+          middle_name: formatString(userData.personalInfo.middleName),
           last_name: userData.personalInfo.lastName,
-          suffix: userData.personalInfo.suffix,
-          date_of_birth: userData.personalInfo.dateOfBirth,
+          suffix: formatString(userData.personalInfo.suffix),
+          date_of_birth: formatDate(userData.personalInfo.dateOfBirth),
           place_of_birth: userData.personalInfo.placeOfBirth,
           gender: userData.personalInfo.gender,
           civil_status: userData.personalInfo.civilStatus,
           citizenship: userData.personalInfo.citizenship,
           mobile_number: userData.personalInfo.mobileNumber,
-          landline_number: userData.personalInfo.landlineNumber,
-          tin: userData.personalInfo.tin,
-          philsys_id: userData.personalInfo.philsysId,
-          sss_number: userData.personalInfo.sssNumber,
-          mother_maiden_name: userData.personalInfo.motherMaidenName,
-          spouse_name: userData.personalInfo.spouseName,
-          spouse_date_of_birth: userData.personalInfo.spouseDateOfBirth,
+          landline_number: formatString(userData.personalInfo.landlineNumber),
+          tin: formatString(userData.personalInfo.tin),
+          philsys_id: formatString(userData.personalInfo.philsysId),
+          sss_number: formatString(userData.personalInfo.sssNumber),
+          mother_maiden_name: formatString(userData.personalInfo.motherMaidenName),
+          spouse_name: formatString(userData.personalInfo.spouseName),
+          spouse_date_of_birth: formatDate(userData.personalInfo.spouseDateOfBirth),
           profile_complete: false
         })
-
-      if (profileError) throw profileError
-
-      // Insert address
-      const { error: addressError } = await supabase
-        .from('user_addresses')
-        .insert({
-          user_id: userId,
-          address_type: 'home',
-          unit_number: userData.address.homeUnit,
-          street_address: userData.address.homeStreet,
-          barangay: userData.address.homeBarangay,
-          city: userData.address.homeCity,
-          province: userData.address.homeProvince,
-          region: userData.address.homeRegion,
-          zip_code: userData.address.homeZipCode,
-          home_ownership: userData.address.homeOwnership,
-          length_of_stay: userData.address.lengthOfStay,
-          is_primary: true
-        })
-
-      if (addressError) throw addressError
-
-      // Insert employment
-      const { error: employmentError } = await supabase
-        .from('user_employment')
-        .insert({
-          user_id: userId,
-          employment_status: userData.employment.employmentStatus,
-          occupation: userData.employment.occupation,
-          employer_name: userData.employment.employerName,
-          employer_address: userData.employment.employerAddress,
-          monthly_income: userData.employment.monthlyIncome,
-          years_of_employment: userData.employment.yearsOfEmployment,
-          is_current: true,
-          is_primary: true
-        })
-
-      if (employmentError) throw employmentError
-
-      // Handle document uploads if needed
-      if (userData.documents.uploadedFiles) {
-        await handleDocumentUploads(userId, userData.documents.uploadedFiles)
+  
+      const endTime = Date.now()
+      console.log(`⏱️ Profile insert took ${endTime - startTime}ms`)
+  
+      if (profileError) {
+        console.error('❌ Profile insert error:', profileError)
+        throw profileError
       }
-
-      console.log('AuthProvider: User profile created successfully')
+  
+      console.log('✅ Main profile inserted successfully!')
+      console.log('📄 Profile data:', profileData)
+  
+      // TODO: Later we'll add address, employment, and documents
+      // For now, just return success
+  
       return profileData
     } catch (error) {
-      console.error('AuthProvider: Error creating user profile:', error)
+      console.error('💥 Error creating user profile:', error)
       throw error
     }
   }
-
+  
   const handleDocumentUploads = async (userId, files) => {
     console.log('AuthProvider: Uploading documents for', userId)
     

@@ -25,7 +25,20 @@ import {
 
 export function SikAPLanding() {
   const navigate = useNavigate()
-  const { isAuthenticated, user, logout } = useAuth()
+
+  const auth = useAuth()
+  
+  // Debug: Log what's available
+  console.log('🔍 Auth object:', auth)
+  console.log('🔍 Available functions:', Object.keys(auth))
+  console.log('🔍 signOut function:', auth.signOut)
+  console.log('🔍 logout function:', auth.logout)
+  
+
+  const { isAuthenticated, user, signOut } = auth
+  console.log('🔄 SikAPLanding render - isAuthenticated:', isAuthenticated)
+  console.log('🔄 SikAPLanding render - user:', user)
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const handleApplyNow = () => {
@@ -36,9 +49,21 @@ export function SikAPLanding() {
     navigate('/signin')
   }
 
-  const handleLogout = () => {
-    logout()
-    // Optional: Show a success message
+  const handleLogout = () => {  // Remove async
+    console.log('🚀 handleLogout called')
+    
+    try {
+      signOut()  // Remove await
+      console.log('✅ signOut completed')
+      
+      // Force page refresh to ensure clean UI
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 100)
+      
+    } catch (error) {
+      console.error('❌ Logout error:', error)
+    }
   }
 
   const navigationItems = [
@@ -91,12 +116,15 @@ export function SikAPLanding() {
                   </Button>
                   <Button 
                     variant="outline" 
-                    onClick={handleLogout}
+                    onClick={() => {
+                        console.log('🖱️ Sign Out button clicked!')
+                        handleLogout()
+                    }}
                     className="border-slate-300 text-slate-600 hover:bg-slate-50"
-                  >
+                 >
                     <LogOut className="w-4 h-4 mr-2" />
                     Sign Out
-                  </Button>
+                </Button>
                 </div>
               ) : (
                 <div className="flex items-center gap-3">

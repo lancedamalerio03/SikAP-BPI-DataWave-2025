@@ -3,21 +3,27 @@ import { createClient } from '@supabase/supabase-js'
 
 console.log('Loading Supabase client...')
 
-// Safely get environment variables
+// Get environment variables with better error handling
 let supabaseUrl = 'https://placeholder.supabase.co'
 let supabaseAnonKey = 'placeholder-key'
 
 try {
-  // Check if import.meta is available
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    console.log('import.meta.env is available')
-    supabaseUrl = import.meta.env.VITE_SUPABASE_URL || supabaseUrl
-    supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || supabaseAnonKey
+  // Use process.env for better compatibility
+  if (process.env.REACT_APP_SUPABASE_URL && process.env.REACT_APP_SUPABASE_ANON_KEY) {
+    console.log('Using REACT_APP environment variables')
+    supabaseUrl = process.env.REACT_APP_SUPABASE_URL
+    supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY
+  } 
+  // Fallback to Vite style
+  else if (import.meta?.env?.VITE_SUPABASE_URL && import.meta?.env?.VITE_SUPABASE_ANON_KEY) {
+    console.log('Using VITE environment variables')
+    supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
   } else {
-    console.warn('import.meta.env is not available, using fallback values')
+    console.warn('Environment variables not found, using fallback values')
   }
 } catch (error) {
-  console.error('Error accessing import.meta.env:', error)
+  console.error('Error accessing environment variables:', error)
 }
 
 console.log('Environment check:')

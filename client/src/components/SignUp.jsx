@@ -13,22 +13,19 @@ import {
   AlertCircle,
   User,
   MapPin,
-  Briefcase,
   Upload,
   CheckCircle,
   Calendar,
   Phone,
   Globe,
-  Home,
-  Building2,
-  CreditCard,
-  FileText
+  CreditCard
+
 } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 
 export default function SignUp() {
   const navigate = useNavigate()
-  const { signIn } = useAuth()
+  const { signUp, signIn } = useAuth()
   
   const [currentStep, setCurrentStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
@@ -207,6 +204,9 @@ export default function SignUp() {
           return false
         }
         break
+        
+      default:
+        return true
     }
     return true
   }

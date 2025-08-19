@@ -17,21 +17,43 @@ const ProfilePage = () => {
     phone: '',
     dateOfBirth: '',
     businessType: '',
-    monthlyIncome: ''
+    monthlyIncome: '',
+    address: '',
+    civilStatus: '',
+    citizenship: ''
   });
+  
 
   // Load user data on component mount
   useEffect(() => {
     console.log('ProfilePage: Loading user data', user);
-    if (user) {
+    if (user?.profile) {
+      // Use actual database data instead of hardcoded values
+      setEditData({
+        firstName: user.profile.first_name || '',
+        lastName: user.profile.last_name || '',
+        email: user.profile.email || user.email || '',
+        phone: user.profile.mobile_number || '',
+        dateOfBirth: user.profile.date_of_birth || '',
+        businessType: user.profile.business_type || '',
+        monthlyIncome: user.profile.monthly_income || '',
+        address: user.profile.address || '',
+        civilStatus: user.profile.civil_status || '',
+        citizenship: user.profile.citizenship || ''
+      });
+    } else if (user) {
+      // Fallback to basic user data if profile isn't loaded yet
       setEditData({
         firstName: user.firstName || '',
         lastName: user.lastName || '',
         email: user.email || '',
-        phone: '+63 917 123 4567',
-        dateOfBirth: '1990-01-15',
-        businessType: 'Online Selling',
-        monthlyIncome: '25000'
+        phone: '',
+        dateOfBirth: '',
+        businessType: '',
+        monthlyIncome: '',
+        address: '',
+        civilStatus: '',
+        citizenship: ''
       });
     }
   }, [user]);
@@ -186,6 +208,38 @@ const ProfilePage = () => {
               ) : (
                 <div className="py-2 text-slate-900">{editData.lastName}</div>
               )}
+            </div>
+            
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Address</label>
+                {isEditing ? (
+                    <input
+                    type="text"
+                    value={editData.address}
+                    onChange={(e) => setEditData({...editData, address: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                ) : (
+                    <div className="py-2 text-slate-900">{editData.address}</div>
+                )}
+            </div>
+
+            <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Income Range</label>
+            {isEditing ? (
+                <select
+                value={editData.monthlyIncome}
+                onChange={(e) => setEditData({...editData, monthlyIncome: e.target.value})}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                <option value="">Select income range</option>
+                <option value="₱25,000 - ₱50,000">₱25,000 - ₱50,000</option>
+                <option value="₱50,000 - ₱100,000">₱50,000 - ₱100,000</option>
+                <option value="₱100,000+">₱100,000+</option>
+                </select>
+            ) : (
+                <div className="py-2 text-slate-900">{editData.monthlyIncome}</div>
+            )}
             </div>
 
             <div>

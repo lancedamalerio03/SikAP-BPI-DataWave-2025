@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { 
   RefreshCw, AlertCircle, CheckCircle, Clock, Play, Pause, 
   Settings, BarChart3, Zap, Brain, Shield, Leaf, FileCheck,
-  TrendingUp, TrendingDown, Activity, Download
+  TrendingUp, TrendingDown, Activity, Download, XCircle
 } from 'lucide-react';
 
 const AIAgents = ({ triggerWebhook, sendToAgent }) => {
