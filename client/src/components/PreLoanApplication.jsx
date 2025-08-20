@@ -7,12 +7,10 @@ import {
   ArrowLeft, 
   DollarSign,
   CheckCircle,
-  AlertCircle,
-  Clock,
-  FileText,
   Calculator
 } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
+import { supabase } from "../lib/supabase" // Add this import
 
 export default function PreLoanApplication() {
   const navigate = useNavigate()
@@ -42,16 +40,16 @@ export default function PreLoanApplication() {
   ]
 
   const loanPurposes = [
-    "Working capital",
-    "Business expansion", 
-    "Purchase of equipment/motor vehicles",
-    "Purchase of inventory",
-    "Emergency expenses",
-    "Home improvement",
-    "Education",
-    "Medical expenses",
-    "Debt consolidation",
-    "Others"
+    { value: "working_capital", label: "Working capital" },
+    { value: "business_expansion", label: "Business expansion" },
+    { value: "purchase_equipment_vehicle", label: "Purchase of equipment/motor vehicles" },
+    { value: "purchase_inventory", label: "Purchase of inventory" },
+    { value: "emergency_expenses", label: "Emergency expenses" },
+    { value: "home_improvement", label: "Home improvement" },
+    { value: "education", label: "Education" },
+    { value: "medical_expenses", label: "Medical expenses" },
+    { value: "debt_consolidation", label: "Debt consolidation" },
+    { value: "others", label: "Others" }
   ]
 
   const tenorOptions = [
@@ -77,28 +75,64 @@ export default function PreLoanApplication() {
     setLoading(true)
 
     try {
-      // Simulate API call to submit pre-loan application
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Get the current authenticated user
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser()
       
-      // Store loan application data
+      if (userError) {
+        throw new Error('User authentication error: ' + userError.message)
+      }
+      
+      if (!currentUser) {
+        throw new Error('User not authenticated')
+      }
+
+      // Prepare the data for Supabase insertion
       const applicationData = {
+        user_id: currentUser.id, // This references auth.users.id
+        loan_amount: parseFloat(loanData.loanAmount),
+        loan_purpose: loanData.loanPurpose,
+        loan_tenor_months: parseInt(loanData.loanTenor),
+        repayment_frequency: loanData.repaymentFrequency,
+        urgency: loanData.urgency,
+        additional_information: loanData.additionalInfo || null,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+
+      // Insert into Supabase
+      const { data, error } = await supabase
+        .from('preloan_applications')
+        .insert([applicationData])
+        .select()
+
+      if (error) {
+        throw new Error('Database error: ' + error.message)
+      }
+
+      console.log('Loan application saved to database:', data)
+      
+      // Keep the existing localStorage logic for compatibility
+      const legacyApplicationData = {
         ...loanData,
         applicantId: user.id,
         applicantName: `${user.firstName} ${user.lastName}`,
         applicationId: `SLN-${Date.now()}`,
         status: 'pending_review',
         submittedAt: new Date().toISOString(),
-        estimatedProcessingTime: '24-48 hours'
+        estimatedProcessingTime: '24-48 hours',
+        databaseId: data[0].id // Store the database ID for reference
       }
       
-      // Store in localStorage for demo
+      // Store in localStorage for demo/backup
       const existingApplications = JSON.parse(localStorage.getItem('loan_applications') || '[]')
-      existingApplications.push(applicationData)
+      existingApplications.push(legacyApplicationData)
       localStorage.setItem('loan_applications', JSON.stringify(existingApplications))
       
       setSubmitted(true)
     } catch (error) {
-      alert('Failed to submit application. Please try again.')
+      console.error('Error submitting loan application:', error)
+      alert(`Failed to submit application: ${error.message}. Please try again.`)
     } finally {
       setLoading(false)
     }
@@ -140,56 +174,22 @@ export default function PreLoanApplication() {
                 Your pre-loan application has been received and is now under review by our AI-powered system.
               </p>
               
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-6">
-                <h3 className="font-medium text-blue-900 mb-2">What happens next?</h3>
-                <div className="text-sm text-blue-700 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    <span>AI review: 5-15 minutes</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    <span>Document request: If approved</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calculator className="w-4 h-4" />
-                    <span>Final approval: 24-48 hours</span>
-                  </div>
+              <div className="bg-slate-50 p-4 rounded-lg mb-6">
+                <h3 className="font-medium text-slate-900 mb-2">What's Next?</h3>
+                <div className="text-sm text-slate-600 space-y-1">
+                  <p>✓ AI-powered initial review (5-15 minutes)</p>
+                  <p>✓ Email notification with pre-approval status</p>
+                  <p>✓ Document submission portal access (if approved)</p>
+                  <p>✓ Final approval within 24-48 hours</p>
                 </div>
               </div>
-
-              <div className="grid md:grid-cols-2 gap-4 text-left mb-6">
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-slate-900 mb-2">Application Details</h4>
-                  <div className="text-sm text-slate-600 space-y-1">
-                    <div>Amount: ₱{Number(loanData.loanAmount).toLocaleString()}</div>
-                    <div>Purpose: {loanData.loanPurpose}</div>
-                    <div>Tenor: {loanData.loanTenor} months</div>
-                  </div>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-slate-900 mb-2">Applicant</h4>
-                  <div className="text-sm text-slate-600 space-y-1">
-                    <div>Name: {user.firstName} {user.lastName}</div>
-                    <div>Email: {user.email}</div>
-                    <div>Status: Pending Review</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button 
-                  onClick={() => navigate('/dashboard')}
-                  className="bg-red-600 hover:bg-red-700 text-white"
-                >
-                  Return to Dashboard
+              
+              <div className="flex gap-4 justify-center">
+                <Button onClick={() => navigate('/dashboard')} className="bg-red-600 hover:bg-red-700">
+                  Go to Dashboard
                 </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => navigate('/dashboard')}
-                  className="border-red-600 text-red-600 hover:bg-red-50"
-                >
-                  View Application Status
+                <Button variant="outline" onClick={() => navigate('/dashboard/loans')}>
+                  View Applications
                 </Button>
               </div>
             </Card>
@@ -223,24 +223,32 @@ export default function PreLoanApplication() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 shadow-lg">
-            <div className="text-center mb-8">
-              <DollarSign className="w-12 h-12 text-red-600 mx-auto mb-3" />
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Loan Application</h2>
-              <p className="text-slate-600">Tell us what you need funding for</p>
+        <div className="max-w-3xl mx-auto">
+          {/* Header Section */}
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <DollarSign className="w-8 h-8 text-red-600" />
             </div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Loan Application</h1>
+            <p className="text-slate-600">Tell us what you need funding for</p>
+          </div>
 
-            {/* User Info Display */}
-            <div className="bg-green-50 p-4 rounded-lg border border-green-200 mb-6">
-              <h3 className="font-medium text-green-900 mb-2">Applicant Information</h3>
-              <div className="text-sm text-green-700">
-                <div>Name: {user.firstName} {user.lastName}</div>
-                <div>Email: {user.email}</div>
-                <div>Profile Status: {user.accountStatus === 'verified' ? '✅ Verified' : '⏳ Pending Verification'}</div>
-              </div>
+          {/* Applicant Info Card */}
+          <div className="bg-green-50 p-4 rounded-lg border border-green-200 mb-6">
+            <h3 className="font-medium text-green-800 mb-2">Applicant Information</h3>
+            <div className="text-sm text-green-700">
+              <p><strong>Name:</strong> {user?.firstName} {user?.lastName}</p>
+              <p><strong>Email:</strong> {user?.email}</p>
+              <p><strong>Profile Status:</strong> 
+                <Badge variant="secondary" className="ml-2 bg-green-500 text-white">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Verified
+                </Badge>
+              </p>
             </div>
+          </div>
 
+          <Card className="p-6 shadow-lg">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Loan Amount */}
               <div>
@@ -275,7 +283,7 @@ export default function PreLoanApplication() {
                 >
                   <option value="">Select purpose</option>
                   {loanPurposes.map((purpose) => (
-                    <option key={purpose} value={purpose}>{purpose}</option>
+                    <option key={purpose.value} value={purpose.value}>{purpose.label}</option>
                   ))}
                 </select>
               </div>
@@ -313,9 +321,9 @@ export default function PreLoanApplication() {
                     required
                   >
                     <option value="">Select frequency</option>
-                    <option value="Weekly">Weekly</option>
-                    <option value="Monthly">Monthly</option>
-                    <option value="Quarterly">Quarterly</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
                   </select>
                 </div>
               </div>
@@ -333,10 +341,10 @@ export default function PreLoanApplication() {
                   required
                 >
                   <option value="">Select urgency</option>
-                  <option value="Low">Low - I can wait 1-2 weeks</option>
-                  <option value="Medium">Medium - I need it within a week</option>
-                  <option value="High">High - I need it within 2-3 days</option>
-                  <option value="Emergency">Emergency - I need it ASAP</option>
+                  <option value="low">Not urgent (flexible timing)</option>
+                  <option value="medium">Moderate (within 1 month)</option>
+                  <option value="high">Urgent (within 1 week)</option>
+                  <option value="emergency">Very urgent (within 24 hours)</option>
                 </select>
               </div>
 
@@ -350,7 +358,7 @@ export default function PreLoanApplication() {
                   value={loanData.additionalInfo} 
                   onChange={handleInputChange}
                   rows={4}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500"
                   placeholder="Tell us more about your loan needs, business plans, or any other relevant information..."
                 />
               </div>
@@ -358,14 +366,34 @@ export default function PreLoanApplication() {
               {/* Loan Summary */}
               {loanData.loanAmount && loanData.loanTenor && (
                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <h3 className="font-medium text-blue-900 mb-2">Loan Summary</h3>
-                  <div className="text-sm text-blue-700 space-y-1">
-                    <div>Requested Amount: ₱{Number(loanData.loanAmount).toLocaleString()}</div>
-                    <div>Loan Tenor: {loanData.loanTenor} months</div>
-                    <div>Estimated Monthly Payment: ₱{Math.round((Number(loanData.loanAmount) * 1.15) / Number(loanData.loanTenor)).toLocaleString()}</div>
-                    <div className="text-xs text-blue-600 mt-2">
-                      *Estimated with 15% annual interest rate. Final terms subject to approval.
+                  <h3 className="font-medium text-blue-900 mb-2 flex items-center">
+                    <Calculator className="w-4 h-4 mr-2" />
+                    Loan Summary
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-blue-700">Loan Amount:</span>
+                      <div className="font-medium text-blue-900">
+                        ₱{parseInt(loanData.loanAmount).toLocaleString()}
+                      </div>
                     </div>
+                    <div>
+                      <span className="text-blue-700">Tenor:</span>
+                      <div className="font-medium text-blue-900">{loanData.loanTenor} months</div>
+                    </div>
+                    <div>
+                      <span className="text-blue-700">Purpose:</span>
+                      <div className="font-medium text-blue-900">
+                        {loanPurposes.find(p => p.value === loanData.loanPurpose)?.label}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-blue-700">Repayment:</span>
+                      <div className="font-medium text-blue-900">{loanData.repaymentFrequency}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-xs text-blue-600">
+                    * Interest rates and final terms subject to approval.
                   </div>
                 </div>
               )}
