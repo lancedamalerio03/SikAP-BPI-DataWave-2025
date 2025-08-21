@@ -121,7 +121,7 @@ export default function PreLoanApplication() {
   }
 
   const handleBackToHome = () => {
-    navigate('/')
+    navigate('/dashboard')  // Changed from navigate('/') to navigate('/dashboard')
   }
 
   // Test functions (unchanged)
