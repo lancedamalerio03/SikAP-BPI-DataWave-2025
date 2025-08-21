@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate, useLocation } from 'react-router-dom'; // NEW: Added useNavigate
 import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
@@ -36,6 +37,8 @@ import {
 
 const LoansPage = () => {
   const { user } = useAuth();
+  const navigate = useNavigate(); // NEW: Navigation hook
+  const location = useLocation(); // NEW: For success messages
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -105,6 +108,16 @@ const LoansPage = () => {
     applyFilters();
   }, [searchTerm, statusFilter, amountFilter, dateFilter, allLoans]);
 
+  // NEW: Check for success message from document upload
+  useEffect(() => {
+    if (location.state?.message) {
+      // You can show a toast notification here
+      console.log('Success message:', location.state.message);
+      // Clear the state
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
   const loadUserLoans = async () => {
     try {
       setLoading(true);
@@ -127,11 +140,6 @@ const LoansPage = () => {
     } catch (error) {
       console.error('Error loading loans:', error);
       setError('Failed to load loans. Please try again.');
-      
-      // Fallback to localStorage only
-      const localStorageLoans = loadFromLocalStorage();
-      setAllLoans(localStorageLoans);
-      
     } finally {
       setLoading(false);
     }
@@ -139,50 +147,47 @@ const LoansPage = () => {
 
   const loadFromSupabase = async () => {
     try {
-      if (!supabase || !user?.id) return [];
+      if (!supabase) {
+        console.log('Supabase not configured, skipping database load');
+        return [];
+      }
 
-      console.log('Loading preloan applications for user:', user.id);
-
-      // Query preloan_applications table
-      const { data: loans, error } = await supabase
+      const { data, error } = await supabase
         .from('preloan_applications')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Supabase query error:', error);
+        console.error('Supabase error:', error);
         return [];
       }
 
-      console.log('Loaded loans from Supabase:', loans);
-
-      // Transform Supabase data to our format
-      return (loans || []).map(loan => ({
+      return (data || []).map(loan => ({
         id: loan.id,
         title: getLoanTitle(loan.loan_purpose),
-        principal: parseFloat(loan.loan_amount) || 0,
-        outstanding: parseFloat(loan.loan_amount) || 0, // For preloan applications, this equals loan amount
-        monthlyPayment: calculateMonthlyPayment(loan.loan_amount, loan.loan_tenor_months),
-        nextDueDate: loan.status === 'approved' ? calculateNextDueDate() : null,
-        interestRate: 12, // Default rate for preloan applications
+        principal: loan.loan_amount,
         status: mapStatus(loan.status),
         statusColor: getStatusColor(loan.status),
-        paymentsRemaining: loan.loan_tenor_months || 12,
-        totalPayments: loan.loan_tenor_months || 12,
-        lastPayment: null, // Preloan applications don't have payments yet
-        paymentMethod: 'GCash', // Default
         submittedAt: loan.created_at,
-        purpose: loan.loan_purpose,
-        tenor: loan.loan_tenor_months,
+        loanPurpose: loan.loan_purpose,
+        loanAmount: loan.loan_amount,
+        loanTenor: loan.loan_tenor_months,
         repaymentFrequency: loan.repayment_frequency,
-        additionalInfo: loan.additional_information,
         urgency: loan.urgency,
+        additionalInfo: loan.additional_information,
         aiDecision: loan.ai_decision,
         aiConfidence: loan.ai_confidence,
         aiReasoning: loan.ai_reasoning,
-        source: 'supabase',
-        documents: generateDocuments(loan)
+        estimatedTime: loan.estimated_processing_time,
+        nextSteps: loan.next_steps ? JSON.parse(loan.next_steps) : [],
+        message: loan.message || '',
+        documents: [
+          { name: 'Loan Agreement', status: 'Complete', date: '2024-02-01' },
+          { name: 'Application Form', status: 'Complete', date: '2024-08-21' },
+          { name: 'Bank Statement', status: loan.status === 'pending_documents' ? 'Required' : 'Complete' }
+        ],
+        source: 'supabase'
       }));
 
     } catch (error) {
@@ -193,39 +198,34 @@ const LoansPage = () => {
 
   const loadFromLocalStorage = () => {
     try {
-      const storedApplications = localStorage.getItem('loan_applications');
-      if (!storedApplications) return [];
-
-      const applications = JSON.parse(storedApplications);
+      const userApplications = JSON.parse(localStorage.getItem('userApplications') || '[]');
       
-      // Filter for current user and transform to our format
-      return applications
-        .filter(app => app.applicantId === user.id)
-        .map(app => ({
-          id: app.applicationId,
-          title: getLoanTitle(app.loanPurpose),
-          principal: parseFloat(app.loanAmount),
-          outstanding: parseFloat(app.loanAmount), // Assume full amount outstanding for new applications
-          monthlyPayment: calculateMonthlyPayment(parseFloat(app.loanAmount), parseInt(app.loanTenor)),
-          nextDueDate: null, // Not applicable for pending applications
-          interestRate: 12, // Default rate
-          status: mapStatus(app.status),
-          statusColor: getStatusColor(app.status),
-          paymentsRemaining: parseInt(app.loanTenor),
-          totalPayments: parseInt(app.loanTenor),
-          lastPayment: null,
-          paymentMethod: 'GCash',
-          submittedAt: app.submittedAt,
-          purpose: app.loanPurpose,
-          tenor: parseInt(app.loanTenor),
-          repaymentFrequency: app.repaymentFrequency,
-          additionalInfo: app.additionalInfo,
-          source: 'localStorage',
-          estimatedTime: app.estimatedProcessingTime,
-          message: app.message,
-          nextSteps: app.nextSteps || [],
-          documents: generateDocuments({ loan_purpose: app.loanPurpose, status: app.status })
-        }));
+      return userApplications.map(app => ({
+        id: app.id,
+        title: getLoanTitle(app.loanData?.loan_purpose || app.loan_purpose),
+        principal: app.loanData?.loan_amount || app.loan_amount || 0,
+        status: mapStatus(app.status || 'pending'),
+        statusColor: getStatusColor(app.status || 'pending'),
+        submittedAt: app.submittedAt,
+        loanPurpose: app.loanData?.loan_purpose || app.loan_purpose,
+        loanAmount: app.loanData?.loan_amount || app.loan_amount,
+        loanTenor: app.loanData?.loan_tenor_months || app.loan_tenor_months,
+        repaymentFrequency: app.loanData?.repayment_frequency || app.repayment_frequency,
+        urgency: app.loanData?.urgency || app.urgency,
+        additionalInfo: app.loanData?.additional_information || app.additional_information,
+        aiDecision: app.aiDecision,
+        aiConfidence: app.aiConfidence,
+        aiReasoning: app.aiReasoning,
+        estimatedTime: app.estimatedTime,
+        nextSteps: app.nextSteps || [],
+        message: app.message || '',
+        documents: [
+          { name: 'Loan Agreement', status: 'Complete', date: '2024-02-01' },
+          { name: 'Application Form', status: 'Complete', date: '2024-08-21' },
+          { name: 'Bank Statement', status: (app.status === 'pending_documents' || app.status === 'pending') ? 'Required' : 'Complete' }
+        ],
+        source: 'localStorage'
+      }));
 
     } catch (error) {
       console.error('Error loading from localStorage:', error);
@@ -234,100 +234,14 @@ const LoansPage = () => {
   };
 
   const deduplicateLoans = (loans) => {
-    const loanMap = new Map();
-    
-    loans.forEach(loan => {
-      const existingLoan = loanMap.get(loan.id);
-      
-      // If no existing loan OR current loan has more recent date, keep this one
-      if (!existingLoan || 
-          (loan.submittedAt && existingLoan.submittedAt && 
-           new Date(loan.submittedAt) > new Date(existingLoan.submittedAt))) {
-        loanMap.set(loan.id, loan);
-      }
-    });
-    
-    return Array.from(loanMap.values());
-  };
-  
-  // Alternative: If you prefer the original structure, just modify the key:
-  const deduplicateLoansSimple = (loans) => {
     const seen = new Set();
-    const result = [];
-    
-    // Sort by date first (most recent first)
-    const sortedLoans = [...loans].sort((a, b) => {
-      if (!a.submittedAt && !b.submittedAt) return 0;
-      if (!a.submittedAt) return 1;
-      if (!b.submittedAt) return -1;
-      return new Date(b.submittedAt) - new Date(a.submittedAt);
-    });
-    
-    sortedLoans.forEach(loan => {
-      // Use only loan.id as key (remove source from deduplication)
-      if (!seen.has(loan.id)) {
-        seen.add(loan.id);
-        result.push(loan);
+    return loans.filter(loan => {
+      if (seen.has(loan.id)) {
+        return false;
       }
+      seen.add(loan.id);
+      return true;
     });
-    
-    return result;
-  };
-
-  const applyFilters = () => {
-    let filtered = [...allLoans];
-
-    // Apply search filter
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(loan => 
-        loan.title.toLowerCase().includes(searchLower) ||
-        loan.id.toLowerCase().includes(searchLower) ||
-        loan.purpose?.toLowerCase().includes(searchLower) ||
-        loan.status.toLowerCase().includes(searchLower)
-      );
-    }
-
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(loan => loan.status.toLowerCase() === statusFilter);
-    }
-
-    // Apply amount filter
-    if (amountFilter !== 'all') {
-      filtered = filtered.filter(loan => {
-        const amount = loan.principal;
-        switch (amountFilter) {
-          case '0-25000': return amount <= 25000;
-          case '25000-50000': return amount > 25000 && amount <= 50000;
-          case '50000-100000': return amount > 50000 && amount <= 100000;
-          case '100000+': return amount > 100000;
-          default: return true;
-        }
-      });
-    }
-
-    // Apply date filter
-    if (dateFilter !== 'all') {
-      const now = new Date();
-      filtered = filtered.filter(loan => {
-        if (!loan.submittedAt) return true;
-        
-        const loanDate = new Date(loan.submittedAt);
-        const daysDiff = Math.floor((now - loanDate) / (1000 * 60 * 60 * 24));
-        
-        switch (dateFilter) {
-          case '7d': return daysDiff <= 7;
-          case '30d': return daysDiff <= 30;
-          case '3m': return daysDiff <= 90;
-          case '6m': return daysDiff <= 180;
-          case '1y': return daysDiff <= 365;
-          default: return true;
-        }
-      });
-    }
-
-    setFilteredLoans(filtered);
   };
 
   const refreshLoans = async () => {
@@ -386,132 +300,168 @@ const LoansPage = () => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  const calculateMonthlyPayment = (amount, months) => {
-    const rate = 0.01; // 1% monthly rate as example
-    const payment = (amount * rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
-    return Math.round(payment);
-  };
-
-  const calculateNextDueDate = () => {
-    const nextMonth = new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    nextMonth.setDate(15); // 15th of next month
-    return nextMonth.toISOString().split('T')[0];
-  };
-
-  const generateDocuments = (loan) => {
-    const baseDocs = [
-      { name: 'Loan Agreement', status: 'Complete', date: '2024-02-01' },
-      { name: 'Application Form', status: 'Complete', date: new Date(loan.created_at || Date.now()).toISOString().split('T')[0] }
-    ];
-
-    if (loan.status === 'pending_documents') {
-      baseDocs.push({ name: 'Bank Statement', status: 'Required', date: null });
-      baseDocs.push({ name: 'Business Permit', status: 'Expired', date: '2024-01-15' });
-    }
-
-    return baseDocs;
-  };
-
   const getDocumentStatusColor = (status) => {
     const colors = {
       'Complete': 'bg-green-100 text-green-800',
       'Required': 'bg-red-100 text-red-800',
-      'Expired': 'bg-orange-100 text-orange-800',
-      'Under Review': 'bg-blue-100 text-blue-800'
+      'Expired': 'bg-orange-100 text-orange-800'
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
   const formatCurrency = (amount) => {
+    if (typeof amount !== 'number') {
+      amount = parseFloat(amount) || 0;
+    }
     return new Intl.NumberFormat('en-PH', {
       style: 'currency',
       currency: 'PHP',
-      minimumFractionDigits: 0
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(amount);
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-PH', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    try {
+      return new Date(dateString).toLocaleDateString('en-PH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return dateString;
+    }
   };
 
-  // Event handlers
+  // Filter functions
+  const applyFilters = () => {
+    let filtered = [...allLoans];
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(loan =>
+        loan.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        loan.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        loan.status.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(loan => 
+        loan.status.toLowerCase().replace(' ', '_') === statusFilter ||
+        loan.status.toLowerCase() === statusFilter
+      );
+    }
+
+    // Amount filter
+    if (amountFilter !== 'all') {
+      filtered = filtered.filter(loan => {
+        const amount = loan.principal || 0;
+        switch (amountFilter) {
+          case '0-25000':
+            return amount >= 0 && amount <= 25000;
+          case '25000-50000':
+            return amount > 25000 && amount <= 50000;
+          case '50000-100000':
+            return amount > 50000 && amount <= 100000;
+          case '100000+':
+            return amount > 100000;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Date filter
+    if (dateFilter !== 'all') {
+      const now = new Date();
+      filtered = filtered.filter(loan => {
+        if (!loan.submittedAt) return false;
+        const loanDate = new Date(loan.submittedAt);
+        const diffTime = Math.abs(now - loanDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        switch (dateFilter) {
+          case '7d':
+            return diffDays <= 7;
+          case '30d':
+            return diffDays <= 30;
+          case '3m':
+            return diffDays <= 90;
+          case '6m':
+            return diffDays <= 180;
+          case '1y':
+            return diffDays <= 365;
+          default:
+            return true;
+        }
+      });
+    }
+
+    setFilteredLoans(filtered);
+  };
+
+  // Action handlers
   const handleMakePayment = (loanId) => {
     console.log('Make payment for loan:', loanId);
-    alert('Payment feature coming soon!');
+    // TODO: Implement payment flow
   };
 
+  // NEW: Updated Upload Document Handler
   const handleUploadDocument = (loanId) => {
-    console.log('Upload document for loan:', loanId);
-    alert('Document upload feature coming soon!');
+    console.log('Upload documents for loan:', loanId);
+    // Navigate to document upload page
+    navigate(`/loans/${loanId}/documents`);
   };
 
   const handleDownloadStatement = (loanId) => {
     console.log('Download statement for loan:', loanId);
-    alert('Statement download feature coming soon!');
+    // TODO: Implement statement download
   };
 
   const handleGetHelp = (loanId) => {
+    console.log('Get help for loan:', loanId);
     setShowChatbot(true);
     setChatMessages(prev => [...prev, {
       id: Date.now(),
       type: 'bot',
-      message: `I can help you with loan ${loanId}. What would you like to know?`,
+      message: `How can I help you with loan ${loanId}? You can ask about payments, documents, or application status.`,
       timestamp: new Date()
     }]);
   };
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
-
-    const userMessage = {
-      id: Date.now(),
-      type: 'user',
-      message: newMessage,
-      timestamp: new Date()
-    };
-
-    setChatMessages(prev => [...prev, userMessage]);
-
-    // Simulate bot response
-    setTimeout(() => {
-      const botMessage = {
-        id: Date.now() + 1,
-        type: 'bot',
-        message: "Thank you for your message. Our team will assist you shortly. For immediate help, please call our customer service at (02) 8-888-SIKAP.",
+  // Chatbot functions
+  const sendMessage = () => {
+    if (newMessage.trim()) {
+      const userMessage = {
+        id: Date.now(),
+        type: 'user',
+        message: newMessage.trim(),
         timestamp: new Date()
       };
-      setChatMessages(prev => [...prev, botMessage]);
-    }, 1000);
 
-    setNewMessage('');
+      setChatMessages(prev => [...prev, userMessage]);
+
+      // Simple bot response
+      setTimeout(() => {
+        const botMessage = {
+          id: Date.now() + 1,
+          type: 'bot',
+          message: "I understand you're asking about your loan. For detailed assistance, please contact our support team at (02) 8123-4567 or visit your nearest BanKo branch.",
+          timestamp: new Date()
+        };
+        setChatMessages(prev => [...prev, botMessage]);
+      }, 1000);
+
+      setNewMessage('');
+    }
   };
 
-  const clearAllFilters = () => {
-    setSearchTerm('');
-    setStatusFilter('all');
-    setAmountFilter('all');
-    setDateFilter('all');
-  };
-
-  const getFilterCount = () => {
-    let count = 0;
-    if (searchTerm) count++;
-    if (statusFilter !== 'all') count++;
-    if (amountFilter !== 'all') count++;
-    if (dateFilter !== 'all') count++;
-    return count;
-  };
-
-  // Loading state
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-96">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-red-600 mx-auto mb-4" />
           <p className="text-slate-600">Loading your loans...</p>
@@ -522,63 +472,43 @@ const LoansPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header with Summary Stats */}
-      <div className="bg-gradient-to-r from-red-600 to-amber-500 rounded-xl p-6 text-white">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-2xl font-bold mb-2">Loan Management</h1>
-            <p className="opacity-90">Manage payments, documents, and track your loan progress</p>
-          </div>
-          <Button 
-            onClick={refreshLoans}
-            disabled={refreshing}
-            className="bg-white/20 hover:bg-white/30 text-white border-white/30"
-          >
-            {refreshing ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
-            )}
-            Refresh
-          </Button>
+      {/* Page Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">My Loans</h1>
+          <p className="text-slate-600">Manage your loan applications and active loans</p>
         </div>
         
-        {/* Summary Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-          <div className="bg-white/10 rounded-lg p-3">
-            <div className="text-2xl font-bold">{allLoans.length}</div>
-            <div className="text-sm opacity-90">Total Applications</div>
-          </div>
-          <div className="bg-white/10 rounded-lg p-3">
-            <div className="text-2xl font-bold">
-              {allLoans.filter(loan => loan.status === 'Active').length}
-            </div>
-            <div className="text-sm opacity-90">Active Loans</div>
-          </div>
-          <div className="bg-white/10 rounded-lg p-3">
-            <div className="text-2xl font-bold">
-              {formatCurrency(allLoans.reduce((sum, loan) => sum + (loan.principal || 0), 0))}
-            </div>
-            <div className="text-sm opacity-90">Total Amount</div>
-          </div>
-          <div className="bg-white/10 rounded-lg p-3">
-            <div className="text-2xl font-bold">
-              {allLoans.filter(loan => ['pending_documents', 'processing', 'under_review', 'pending_interview'].includes(loan.status.toLowerCase())).length}
-            </div>
-            <div className="text-sm opacity-90">Pending</div>
-          </div>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={refreshLoans}
+            variant="outline"
+            disabled={refreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
+          
+          <Button 
+            onClick={() => navigate('/application')}
+            className="bg-gradient-to-r from-red-600 to-amber-500 hover:opacity-90"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New Application
+          </Button>
         </div>
       </div>
 
       {/* Search and Filters */}
       <Card className="p-6">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-          {/* Search */}
-          <div className="relative flex-1 max-w-md">
+        <div className="space-y-4">
+          {/* Search Bar */}
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Search loans by ID, type, or status..."
+              placeholder="Search by loan ID, type, or status..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
@@ -586,39 +516,25 @@ const LoansPage = () => {
           </div>
 
           {/* Filter Toggle */}
-          <div className="flex items-center gap-3">
-            {getFilterCount() > 0 && (
-              <Button
-                onClick={clearAllFilters}
-                variant="outline"
-                size="sm"
-                className="text-slate-600"
-              >
-                Clear Filters
-              </Button>
-            )}
-            <Button
+          <div className="flex items-center justify-between">
+            <button
               onClick={() => setShowFilters(!showFilters)}
-              variant="outline"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 text-slate-600 hover:text-slate-900"
             >
               <Filter className="w-4 h-4" />
-              Filters
-              {getFilterCount() > 0 && (
-                <Badge className="bg-red-600 text-white ml-1">
-                  {getFilterCount()}
-                </Badge>
-              )}
+              <span>Filters</span>
               <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-            </Button>
+            </button>
+            
+            {/* Filter Summary */}
+            <div className="text-sm text-slate-600">
+              Showing {filteredLoans.length} of {allLoans.length} loans
+            </div>
           </div>
-        </div>
 
-        {/* Filter Options */}
-        {showFilters && (
-          <div className="mt-4 p-4 bg-slate-50 rounded-lg">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Status Filter */}
+          {/* Filter Options */}
+          {showFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-200">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
                 <select
@@ -633,10 +549,9 @@ const LoansPage = () => {
                   ))}
                 </select>
               </div>
-
-              {/* Amount Filter */}
+              
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Amount Range</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Amount</label>
                 <select
                   value={amountFilter}
                   onChange={(e) => setAmountFilter(e.target.value)}
@@ -649,10 +564,9 @@ const LoansPage = () => {
                   ))}
                 </select>
               </div>
-
-              {/* Date Filter */}
+              
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Date Range</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Date Applied</label>
                 <select
                   value={dateFilter}
                   onChange={(e) => setDateFilter(e.target.value)}
@@ -666,40 +580,32 @@ const LoansPage = () => {
                 </select>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </Card>
 
       {/* Error Message */}
       {error && (
         <Card className="p-4 border-red-200 bg-red-50">
           <div className="flex items-center gap-2 text-red-800">
-            <AlertCircle className="w-5 h-5" />
+            <AlertCircle className="w-4 h-4" />
             <span>{error}</span>
+            <Button
+              onClick={loadUserLoans}
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+            >
+              Try Again
+            </Button>
           </div>
         </Card>
       )}
 
-      {/* Results Info */}
-      <div className="flex items-center justify-between">
-        <p className="text-slate-600">
-          Showing {filteredLoans.length} of {allLoans.length} loan applications
-        </p>
-        <Button 
-          onClick={() => window.location.href = '/application'}
-          className="bg-gradient-to-r from-red-600 to-amber-500 hover:opacity-90"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Application
-        </Button>
-      </div>
-
       {/* Loans List */}
       {filteredLoans.length === 0 ? (
         <Card className="p-12 text-center">
-          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FileText className="w-8 h-8 text-slate-400" />
-          </div>
+          <FileText className="w-12 h-12 text-slate-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-slate-900 mb-2">
             {allLoans.length === 0 ? 'No loan applications yet' : 'No loans match your filters'}
           </h3>
@@ -711,7 +617,7 @@ const LoansPage = () => {
           </p>
           {allLoans.length === 0 && (
             <Button 
-              onClick={() => window.location.href = '/application'}
+              onClick={() => navigate('/application')}
               className="bg-gradient-to-r from-red-600 to-amber-500 hover:opacity-90"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -772,81 +678,32 @@ const LoansPage = () => {
                       <div className="text-lg font-semibold text-slate-900">
                         {loan.nextDueDate ? formatDate(loan.nextDueDate) : 'N/A'}
                       </div>
-                      <div className="text-sm text-slate-600">Next Due</div>
+                      <div className="text-sm text-slate-600">Next Due Date</div>
                     </div>
                     <div className="text-center">
                       <div className="text-lg font-semibold text-slate-900">
-                        {loan.interestRate}%
+                        {loan.remainingPayments || 'N/A'}
                       </div>
-                      <div className="text-sm text-slate-600">Interest Rate</div>
-                    </div>
-                  </div>
-
-                  {/* Payment Progress */}
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium text-slate-700">Payment Progress</span>
-                      <span className="text-sm text-slate-600">
-                        {loan.totalPayments - loan.paymentsRemaining} of {loan.totalPayments} payments
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div 
-                        className="bg-gradient-to-r from-red-600 to-amber-500 h-2 rounded-full transition-all duration-300"
-                        style={{width: `${((loan.totalPayments - loan.paymentsRemaining) / loan.totalPayments) * 100}%`}}
-                      ></div>
+                      <div className="text-sm text-slate-600">Payments Left</div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* AI Decision Section for processed applications */}
+              {/* AI Decision Display */}
               {loan.aiDecision && (
-                <div className={`p-6 border-b border-slate-200 ${
-                  loan.aiDecision === 'approved' ? 'bg-green-50' : 
-                  loan.aiDecision === 'rejected' ? 'bg-red-50' : 'bg-blue-50'
-                }`}>
+                <div className="p-6 bg-blue-50 border-b border-slate-200">
                   <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      loan.aiDecision === 'approved' ? 'bg-green-100' : 
-                      loan.aiDecision === 'rejected' ? 'bg-red-100' : 'bg-blue-100'
-                    }`}>
-                      {loan.aiDecision === 'approved' ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                      ) : loan.aiDecision === 'rejected' ? (
-                        <X className="w-5 h-5 text-red-600" />
-                      ) : (
-                        <Brain className="w-5 h-5 text-blue-600" />
-                      )}
-                    </div>
+                    <Brain className="w-5 h-5 text-blue-600 mt-0.5" />
                     <div className="flex-1">
-                      <h4 className={`font-medium mb-1 ${
-                        loan.aiDecision === 'approved' ? 'text-green-900' : 
-                        loan.aiDecision === 'rejected' ? 'text-red-900' : 'text-blue-900'
-                      }`}>
-                        AI Assessment: {loan.aiDecision.charAt(0).toUpperCase() + loan.aiDecision.slice(1)}
-                      </h4>
-                      {loan.aiConfidence && (
-                        <div className="mb-2">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm text-slate-600">Confidence Score:</span>
-                            <div className="flex items-center gap-2">
-                              <div className="w-20 bg-slate-200 rounded-full h-1.5">
-                                <div 
-                                  className={`h-1.5 rounded-full ${
-                                    loan.aiConfidence >= 0.8 ? 'bg-green-500' :
-                                    loan.aiConfidence >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
-                                  }`}
-                                  style={{width: `${loan.aiConfidence * 100}%`}}
-                                ></div>
-                              </div>
-                              <span className="text-sm font-medium text-slate-700">
-                                {Math.round(loan.aiConfidence * 100)}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="font-medium text-blue-900">AI Assessment: {loan.aiDecision?.toUpperCase()}</h4>
+                        {loan.aiConfidence && (
+                          <Badge variant="outline" className="text-blue-600 border-blue-200">
+                            {Math.round(loan.aiConfidence * 100)}% confidence
+                          </Badge>
+                        )}
+                      </div>
                       {loan.aiReasoning && (
                         <p className={`text-sm ${
                           loan.aiDecision === 'approved' ? 'text-green-700' : 
@@ -901,7 +758,7 @@ const LoansPage = () => {
                     <div>
                       <h4 className="font-medium text-amber-900">Action Required</h4>
                       <p className="text-sm text-amber-700">
-                        Please upload your latest bank statement to continue loan processing.
+                        Please upload your required documents to continue loan processing.
                       </p>
                     </div>
                   </div>
@@ -1026,13 +883,30 @@ const LoansPage = () => {
                 className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
-                    message.type === 'user'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-slate-100 text-slate-800'
+                  className={`flex items-start gap-2 max-w-[80%] ${
+                    message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
                   }`}
                 >
-                  {message.message}
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                    message.type === 'user' 
+                      ? 'bg-red-600 text-white' 
+                      : 'bg-blue-600 text-white'
+                  }`}>
+                    {message.type === 'user' ? (
+                      <User className="w-3 h-3" />
+                    ) : (
+                      <Bot className="w-3 h-3" />
+                    )}
+                  </div>
+                  <div
+                    className={`rounded-lg p-3 text-sm ${
+                      message.type === 'user'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-slate-100 text-slate-900'
+                    }`}
+                  >
+                    {message.message}
+                  </div>
                 </div>
               </div>
             ))}
@@ -1044,14 +918,14 @@ const LoansPage = () => {
                 type="text"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Type your message..."
-                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                placeholder="Ask about your loans..."
+                className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               <Button
-                onClick={handleSendMessage}
+                onClick={sendMessage}
                 size="sm"
-                className="bg-red-600 hover:bg-red-700"
+                className="bg-blue-600 hover:bg-blue-700"
               >
                 <Send className="w-4 h-4" />
               </Button>

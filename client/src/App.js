@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import { SikAPLanding } from './components/SikAPLanding';
@@ -22,6 +22,9 @@ import AgentsPage from './components/dashboard/AgentsPage';
 import ChatbotPage from './components/dashboard/ChatbotPage';
 import ProfilePage from './components/dashboard/ProfilePage';
 
+// NEW: Document Upload Portal
+import DocumentUploadPortal from './components/DocumentUploadPortal';
+
 // Loan Officer Dashboard imports
 import LoanOfficerDashboard from './components/officer/LoanOfficerDashboard';
 import AnalyticsTab from './components/officer/Analytics';
@@ -33,6 +36,93 @@ import WorkflowTab from './components/officer/Workflow';
 import SettingsTab from './components/officer/Settings';
 
 import './index.css';
+
+// NEW: Wrapper component to fetch application data for DocumentUploadPortal
+const DocumentUploadWrapper = () => {
+  const { applicationId } = useParams();
+  const [applicationData, setApplicationData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    const fetchApplicationData = async () => {
+      try {
+        setLoading(true);
+        
+        // First try to get from localStorage (for recent applications)
+        const recentApplications = JSON.parse(localStorage.getItem('userApplications') || '[]');
+        const localApp = recentApplications.find(app => app.id === applicationId);
+        
+        if (localApp) {
+          setApplicationData(localApp);
+          setLoading(false);
+          return;
+        }
+
+        // TODO: If not in localStorage, fetch from Supabase
+        // const { data, error } = await supabase
+        //   .from('preloan_applications')
+        //   .select('*')
+        //   .eq('id', applicationId)
+        //   .single();
+        
+        // if (error) throw error;
+        // setApplicationData(data);
+
+        // For now, create mock data if not found
+        setApplicationData({
+          id: applicationId,
+          loanAmount: 75000,
+          loanPurpose: 'business_expansion',
+          employmentStatus: 'Self-employed',
+          hasEWallet: true,
+          ewalletProvider: 'GCash',
+          businessType: 'Retail Store',
+          status: 'pending_documents'
+        });
+        
+      } catch (err) {
+        console.error('Error fetching application data:', err);
+        setError('Failed to load application data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (applicationId) {
+      fetchApplicationData();
+    }
+  }, [applicationId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading application data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button 
+            onClick={() => window.history.back()} 
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <DocumentUploadPortal applicationData={applicationData} />;
+};
 
 function App() {
   return (
@@ -59,6 +149,16 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+
+            {/* NEW: Document Upload Route */}
+            <Route 
+              path="/loans/:applicationId/documents" 
+              element={
+                <ProtectedRoute>
+                  <DocumentUploadWrapper />
+                </ProtectedRoute>
+              } 
+            />
             
             {/* User/Borrower Dashboard Routes - Protected with nested routing */}
             <Route 
@@ -78,7 +178,7 @@ function App() {
               <Route path="profile" element={<ProfilePage />} />
             </Route>
             
-            {/* Loan Officer Dashboard Routes - NEW ADDITION */}
+            {/* Loan Officer Dashboard Routes */}
             <Route 
               path="/officer" 
               element={
@@ -88,7 +188,7 @@ function App() {
               }
             />
             
-            {/* Individual Loan Officer Dashboard Pages (Alternative Routing) */}
+            {/* Individual Loan Officer Dashboard Pages */}
             <Route 
               path="/officer/analytics" 
               element={
@@ -194,18 +294,6 @@ function App() {
                 </ProtectedRoute>
               } 
             />
-            
-            {/* Future Routes - Commented for now */}
-            {/* 
-            <Route 
-              path="/documents" 
-              element={
-                <ProtectedRoute requireVerification={true}>
-                  <DocumentPortal />
-                </ProtectedRoute>
-              } 
-            />
-            */}
           </Routes>
         </div>
       </Router>
