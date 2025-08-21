@@ -66,15 +66,15 @@ const LoansPage = () => {
   // Status options for filtering
   const statusOptions = [
     { value: 'all', label: 'All Status' },
-    { value: 'pending', label: 'Pending' },
+    { value: 'pending_documents', label: 'Pending Documents' },
     { value: 'processing', label: 'Processing' },
     { value: 'under_review', label: 'Under Review' },
+    { value: 'pending_interview', label: 'Pending Interview' },
     { value: 'approved', label: 'Approved' },
-    { value: 'active', label: 'Active' },
     { value: 'rejected', label: 'Rejected' },
-    { value: 'pending_documents', label: 'Pending Documents' },
+    { value: 'active', label: 'Active' },
     { value: 'completed', label: 'Completed' }
-  ];
+  ];  
 
   const amountOptions = [
     { value: 'all', label: 'All Amounts' },
@@ -234,13 +234,44 @@ const LoansPage = () => {
   };
 
   const deduplicateLoans = (loans) => {
-    const seen = new Set();
-    return loans.filter(loan => {
-      const key = `${loan.id}-${loan.source}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+    const loanMap = new Map();
+    
+    loans.forEach(loan => {
+      const existingLoan = loanMap.get(loan.id);
+      
+      // If no existing loan OR current loan has more recent date, keep this one
+      if (!existingLoan || 
+          (loan.submittedAt && existingLoan.submittedAt && 
+           new Date(loan.submittedAt) > new Date(existingLoan.submittedAt))) {
+        loanMap.set(loan.id, loan);
+      }
     });
+    
+    return Array.from(loanMap.values());
+  };
+  
+  // Alternative: If you prefer the original structure, just modify the key:
+  const deduplicateLoansSimple = (loans) => {
+    const seen = new Set();
+    const result = [];
+    
+    // Sort by date first (most recent first)
+    const sortedLoans = [...loans].sort((a, b) => {
+      if (!a.submittedAt && !b.submittedAt) return 0;
+      if (!a.submittedAt) return 1;
+      if (!b.submittedAt) return -1;
+      return new Date(b.submittedAt) - new Date(a.submittedAt);
+    });
+    
+    sortedLoans.forEach(loan => {
+      // Use only loan.id as key (remove source from deduplication)
+      if (!seen.has(loan.id)) {
+        seen.add(loan.id);
+        result.push(loan);
+      }
+    });
+    
+    return result;
   };
 
   const applyFilters = () => {
@@ -323,26 +354,32 @@ const LoansPage = () => {
 
   const mapStatus = (status) => {
     const statusMap = {
-      'pending': 'Pending',
-      'processing': 'Processing', 
+      'pending_documents': 'Pending Documents',
       'approved': 'Approved',
       'rejected': 'Rejected',
+      'processing': 'Processing',
+      'pending_interview': 'Pending Interview',
       'under_review': 'Under Review',
-      'pending_documents': 'Pending Documents',
+      
+      // Legacy mappings for backward compatibility
+      'pending': 'Pending Documents',
       'active': 'Active',
       'completed': 'Completed'
     };
-    return statusMap[status] || status || 'Pending';
+    return statusMap[status] || status || 'Pending Documents';
   };
 
   const getStatusColor = (status) => {
     const colors = {
-      'pending': 'bg-amber-100 text-amber-800',
-      'processing': 'bg-blue-100 text-blue-800',
+      'pending_documents': 'bg-amber-100 text-amber-800',
       'approved': 'bg-green-100 text-green-800',
       'rejected': 'bg-red-100 text-red-800',
-      'under_review': 'bg-purple-100 text-purple-800',
-      'pending_documents': 'bg-orange-100 text-orange-800',
+      'processing': 'bg-blue-100 text-blue-800',
+      'pending_interview': 'bg-purple-100 text-purple-800',
+      'under_review': 'bg-orange-100 text-orange-800',
+      
+      // Legacy status colors for backward compatibility
+      'pending': 'bg-amber-100 text-amber-800',
       'active': 'bg-green-100 text-green-800',
       'completed': 'bg-gray-100 text-gray-800'
     };
@@ -526,7 +563,7 @@ const LoansPage = () => {
           </div>
           <div className="bg-white/10 rounded-lg p-3">
             <div className="text-2xl font-bold">
-              {allLoans.filter(loan => ['pending', 'processing', 'under_review'].includes(loan.status.toLowerCase())).length}
+              {allLoans.filter(loan => ['pending_documents', 'processing', 'under_review', 'pending_interview'].includes(loan.status.toLowerCase())).length}
             </div>
             <div className="text-sm opacity-90">Pending</div>
           </div>
@@ -857,7 +894,7 @@ const LoansPage = () => {
               )}
 
               {/* Action Required Alert */}
-              {loan.status === 'Pending Documents' && (
+              {(loan.status === 'Pending Documents' || loan.status.toLowerCase() === 'pending_documents') && (
                 <div className="p-4 bg-amber-50 border-b border-slate-200">
                   <div className="flex items-center gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-600" />
@@ -870,7 +907,25 @@ const LoansPage = () => {
                   </div>
                 </div>
               )}
-
+              
+              {/* Interview Scheduling Alert */}
+              {(loan.status === 'Pending Interview' || loan.status.toLowerCase() === 'pending_interview') && (
+                <div className="p-4 bg-purple-50 border-b border-slate-200">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-purple-600" />
+                    <div>
+                      <h4 className="font-medium text-purple-900">Interview Required</h4>
+                      <p className="text-sm text-purple-700">
+                        Please schedule an interview with our loan officer to proceed with your application.
+                      </p>
+                      <button className="mt-2 text-sm text-purple-600 hover:text-purple-800 font-medium">
+                        Schedule Interview →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+                            
               {/* Documents Section */}
               <div className="p-6 border-b border-slate-200">
                 <h4 className="font-semibold text-slate-900 mb-4">Documents</h4>
@@ -904,7 +959,7 @@ const LoansPage = () => {
                     </Button>
                   )}
                   
-                  {(loan.status === 'Pending Documents' || loan.documents.some(doc => doc.status === 'Required')) && (
+                  {(loan.status === 'Pending Documents' || loan.status.toLowerCase() === 'pending_documents' || loan.documents.some(doc => doc.status === 'Required')) && (
                     <Button
                       onClick={() => handleUploadDocument(loan.id)}
                       variant="outline"
