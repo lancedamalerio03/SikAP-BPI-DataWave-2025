@@ -20,11 +20,11 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     console.log('AuthProvider: Initializing Supabase auth...')
     
-    // Check if we just signed out (add a flag to prevent auto re-login)
+    // Check if we just signed out
     const justSignedOut = sessionStorage.getItem('sikap-signed-out')
     if (justSignedOut) {
       console.log('AuthProvider: Recently signed out, skipping session restore')
-      sessionStorage.removeItem('sikap-signed-out') // Clear the flag
+      sessionStorage.removeItem('sikap-signed-out')
       setLoading(false)
       return
     }
@@ -46,44 +46,27 @@ export const AuthProvider = ({ children }) => {
         setUser(session.user)
         setIsAuthenticated(true)
         fetchUserProfile(session.user.id)
-      } else {
-        console.log('AuthProvider: No existing session')
       }
       setLoading(false)
     })
-  
+
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('🔄 Auth state changed:', event, session?.user?.email)
-        
-        if (event === 'SIGNED_OUT') {
-          console.log('✅ Confirmed signed out via Supabase')
-          setUser(null)
-          setIsAuthenticated(false)
-          return
-        }
-        
-        if (session?.user && event !== 'SIGNED_OUT') {
-          console.log('✅ User session found:', session.user.email)
-          setUser(session.user)
-          setIsAuthenticated(true)
-          await fetchUserProfile(session.user.id)
-        } else {
-          console.log('❌ No valid session')
-          setUser(null)
-          setIsAuthenticated(false)
-        }
-        
-        setLoading(false)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('AuthProvider: Auth state changed', event, session?.user?.email)
+      
+      if (session?.user) {
+        setUser(session.user)
+        setIsAuthenticated(true)
+        await fetchUserProfile(session.user.id)
+      } else {
+        setUser(null)
+        setIsAuthenticated(false)
       }
-    )
-  
-    return () => {
-      console.log('AuthProvider: Cleaning up auth listener')
-      subscription.unsubscribe()
-    }
-  }, []) // Make sure this only runs once
+      setLoading(false)
+    })
+
+    return () => subscription?.unsubscribe()
+  }, [])
 
   const fetchUserProfile = async (userId) => {
     try {
@@ -91,10 +74,10 @@ export const AuthProvider = ({ children }) => {
       
       const { data, error } = await supabase
         .from('users_profiles')
-        .select('*')  // Just get the basic profile first
+        .select('*')
         .eq('id', userId)
         .single()
-  
+
       if (error) {
         if (error.code === 'PGRST116') {
           console.log('AuthProvider: No profile found for user')
@@ -203,17 +186,30 @@ export const AuthProvider = ({ children }) => {
     console.log('📊 User data received:', userData)
     
     try {
-      // Helper functions
+      // Helper functions to ensure proper data types
       const formatDate = (dateString) => {
-        return dateString && dateString.trim() !== '' ? dateString : null
+        if (!dateString || dateString.trim() === '') return null
+        // Ensure date is in YYYY-MM-DD format for PostgreSQL
+        const date = new Date(dateString)
+        return date.toISOString().split('T')[0]
       }
+      
       const formatString = (str) => {
-        return str && str.trim() !== '' ? str : null
+        return str && str.trim() !== '' ? str.trim() : null
       }
+      
       const formatNumber = (num) => {
-        return num && num !== '' ? parseFloat(num) : null
+        if (!num || num === '') return null
+        const parsed = parseFloat(num)
+        return isNaN(parsed) ? null : parsed
       }
-  
+
+      const formatInteger = (num) => {
+        if (!num || num === '') return null
+        const parsed = parseInt(num)
+        return isNaN(parsed) ? null : parsed
+      }
+
       // 1. Insert main profile
       console.log('📝 AuthProvider: Inserting main profile...')
       const startTime = Date.now()
@@ -242,18 +238,17 @@ export const AuthProvider = ({ children }) => {
           spouse_date_of_birth: formatDate(userData.personalInfo.spouseDateOfBirth),
           profile_complete: false
         })
-  
+
       const endTime = Date.now()
       console.log(`⏱️ Profile insert took ${endTime - startTime}ms`)
-  
+
       if (profileError) {
         console.error('❌ Profile insert error:', profileError)
         throw profileError
       }
-  
+
       console.log('✅ Main profile inserted successfully!')
-      console.log('📄 Profile data:', profileData)
-  
+
       // 2. Insert address data
       if (userData.address) {
         console.log('🏠 AuthProvider: Inserting address...')
@@ -261,7 +256,7 @@ export const AuthProvider = ({ children }) => {
           .from('user_addresses')
           .insert({
             user_id: userId,
-            address_type: 'home', // Must be 'home', 'business', or 'billing'
+            address_type: 'home',
             unit_number: formatString(userData.address.homeUnit),
             street_address: userData.address.homeStreet,
             barangay: userData.address.homeBarangay,
@@ -273,53 +268,99 @@ export const AuthProvider = ({ children }) => {
             length_of_stay: formatNumber(userData.address.lengthOfStay),
             is_primary: true
           })
-      
+
         if (addressError) {
           console.error('❌ Address insert error:', addressError)
           throw addressError
         }
         console.log('✅ Address inserted successfully!')
       }
-  
-      // 3. Insert employment data
-      if (userData.employment) {
-        console.log('💼 AuthProvider: Inserting employment...')
-        const { error: employmentError } = await supabase
-          .from('user_employment')
+
+      // 3. Insert financial information (NEW)
+      if (userData.financialInfo) {
+        console.log('💰 AuthProvider: Inserting financial info...')
+        const { error: financialError } = await supabase
+          .from('user_financial_info')
           .insert({
             user_id: userId,
-            employment_status: userData.employment.employmentStatus,
-            occupation: formatString(userData.employment.occupation),
-            employer_name: formatString(userData.employment.employerName),
-            employer_address: formatString(userData.employment.employerAddress),
-            monthly_income: formatNumber(userData.employment.monthlyIncome),
-            years_of_employment: formatNumber(userData.employment.yearsOfEmployment),
-            is_current: true
+            source_of_funds: userData.financialInfo.sourceOfFunds,
+            nature_of_work: userData.financialInfo.natureOfWork,
+            account_purpose: userData.financialInfo.accountPurpose
           })
-  
+
+        if (financialError) {
+          console.error('❌ Financial info insert error:', financialError)
+          throw financialError
+        }
+        console.log('✅ Financial info inserted successfully!')
+      }
+
+      // 4. Insert employment data (ENHANCED)
+      if (userData.employment) {
+        console.log('💼 AuthProvider: Inserting employment...')
+        
+        // Prepare employment data based on employment status
+        const employmentData = {
+          user_id: userId,
+          employment_status: userData.employment.employmentStatus,
+          occupation: formatString(userData.employment.occupation),
+          monthly_income: formatNumber(userData.employment.monthlyIncome),
+          is_current: true,
+          is_primary: true
+        }
+
+        // Add fields based on employment type
+        const empStatus = userData.employment.employmentStatus
+
+        if (empStatus?.includes('Employed') || empStatus === 'OFW') {
+          // For employees and OFW
+          employmentData.employer_name = formatString(userData.employment.employerName)
+          employmentData.employer_address = formatString(userData.employment.employerAddress)
+          employmentData.years_of_employment = formatNumber(userData.employment.yearsOfEmployment)
+        } else if (empStatus === 'Self-employed' || empStatus === 'Freelancer/Contractor') {
+          // For self-employed and freelancers
+          employmentData.work_address = formatString(userData.employment.workAddress)
+        } else if (empStatus === 'Business Owner') {
+          // For business owners
+          employmentData.nature_of_business = formatString(userData.employment.natureOfBusiness)
+          employmentData.activity_of_business = formatString(userData.employment.activityOfBusiness)
+          employmentData.business_age = formatInteger(userData.employment.businessAge)
+          employmentData.business_address = formatString(userData.employment.businessAddress)
+        } else if (['Student', 'Unemployed', 'Retired'].includes(empStatus)) {
+          // For students, unemployed, retired
+          employmentData.monthly_funds = formatNumber(userData.employment.monthlyFunds)
+          // Set monthly_income to null for these categories
+          employmentData.monthly_income = null
+        }
+
+        const { error: employmentError } = await supabase
+          .from('user_employment')
+          .insert(employmentData)
+
         if (employmentError) {
           console.error('❌ Employment insert error:', employmentError)
+          console.error('Employment data that failed:', employmentData)
           throw employmentError
         }
         console.log('✅ Employment inserted successfully!')
       }
-  
-      // 4. Handle document uploads
+
+      // 5. Handle document uploads
       if (userData.documents && userData.documents.uploadedFiles) {
         console.log('📄 AuthProvider: Processing documents...')
         await handleDocumentUploads(userId, userData.documents.uploadedFiles)
         console.log('✅ Documents processed successfully!')
       }
-  
-      // 5. Update profile completion status
+
+      // 6. Update profile completion status
       await supabase
         .from('users_profiles')
         .update({ profile_complete: true })
         .eq('id', userId)
-  
+
       console.log('🎉 User profile creation completed successfully!')
       return profileData
-  
+
     } catch (error) {
       console.error('💥 Error creating user profile:', error)
       throw error
