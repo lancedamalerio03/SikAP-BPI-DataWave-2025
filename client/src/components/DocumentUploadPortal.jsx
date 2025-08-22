@@ -1,10 +1,10 @@
-// Updated DocumentUploadPortal.jsx with separate forms
+// client/src/components/DocumentUploadPortal.jsx
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { 
   CheckCircle, ArrowLeft, Clock, AlertCircle, FileText, 
-  Leaf, Users, Shield, Package, MapPin, Trash2, 
+  Package, MapPin, Trash2, 
   HelpCircle, Download, Eye, AlertTriangle, Heart
 } from 'lucide-react';
 
@@ -18,7 +18,6 @@ const DocumentUploadPortal = () => {
   // Document management states
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [supportingDocs, setSupportingDocs] = useState([]);
-  const [esgCompleted, setEsgCompleted] = useState(false);
   
   // UI states
   const [uploading, setUploading] = useState(false);
@@ -30,11 +29,6 @@ const DocumentUploadPortal = () => {
     if (location.state?.message) {
       setUploadStatus(location.state.message);
       
-      // Check what was completed based on the message
-      if (location.state.message.includes('ESG')) {
-        setEsgCompleted(true);
-      }
-
       // Clear the message after showing it
       setTimeout(() => setUploadStatus(''), 5000);
     }
@@ -42,7 +36,7 @@ const DocumentUploadPortal = () => {
 
   // Document type configurations
   const formalDocumentTypes = [
-    { value: 'government_id', label: 'Government ID', icon: Shield, required: true },
+    { value: 'government_id', label: 'Government ID', icon: Package, required: true },
     { value: 'proof_of_address', label: 'Proof of Address', icon: MapPin, required: true },
     { value: 'business_permit', label: 'Business Permit', icon: FileText },
     { value: 'financial_statements', label: 'Financial Statements', icon: FileText },
@@ -72,8 +66,7 @@ const DocumentUploadPortal = () => {
   // Check completion status for each section
   const getCompletionStatus = () => {
     return {
-      documents: hasRequiredDocuments(),
-      esg: esgCompleted
+      documents: hasRequiredDocuments()
     };
   };
 
@@ -83,13 +76,12 @@ const DocumentUploadPortal = () => {
     const pending = [];
     
     if (!status.documents) pending.push('Documents');
-    if (!status.esg) pending.push('ESG Compliance Form');
 
     return {
       allComplete: pending.length === 0,
       pendingItems: pending,
       completedCount: Object.values(status).filter(Boolean).length,
-      totalCount: 2
+      totalCount: 1
     };
   };
 
@@ -159,7 +151,7 @@ const DocumentUploadPortal = () => {
     }
 
     setFinalSubmitting(true);
-    setUploadStatus('Submitting complete application...');
+    setUploadStatus('Submitting documents...');
 
     try {
       const submissionData = {
@@ -183,13 +175,13 @@ const DocumentUploadPortal = () => {
         })),
         completionStatus: getCompletionStatus(),
         submittedAt: new Date().toISOString(),
-        workflow_type: 'final_application_submission'
+        workflow_type: 'document_submission'
       };
 
-      console.log('Submitting final application:', submissionData);
+      console.log('Submitting documents:', submissionData);
 
       // Submit to n8n webhook
-      const response = await fetch('https://sikap-2025.app.n8n.cloud/webhook/final-submission', {
+      const response = await fetch('https://sikap-2025.app.n8n.cloud/webhook/document-submission', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -202,23 +194,23 @@ const DocumentUploadPortal = () => {
       }
 
       const result = await response.json();
-      console.log('Final submission response:', result);
+      console.log('Document submission response:', result);
 
-      setUploadStatus('Application submitted successfully! Processing has begun.');
+      setUploadStatus('Documents submitted successfully!');
       
       // Redirect to loans dashboard after success
       setTimeout(() => {
         navigate('/dashboard/loans', { 
           state: { 
-            message: 'Application submitted successfully! You will receive updates via SMS and email.',
+            message: 'Documents submitted successfully! You will receive updates via SMS and email.',
             type: 'success'
           }
         });
       }, 2000);
 
     } catch (error) {
-      console.error('Error submitting final application:', error);
-      setUploadStatus('Failed to submit application. Please try again.');
+      console.error('Error submitting documents:', error);
+      setUploadStatus('Failed to submit documents. Please try again.');
     } finally {
       setFinalSubmitting(false);
     }
@@ -283,7 +275,7 @@ const DocumentUploadPortal = () => {
         <div className="mb-8 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-900">Application Status</h2>
+              <h2 className="text-lg font-semibold text-slate-900">Document Upload Status</h2>
               <div className="text-sm text-slate-600">
                 {statusSummary.completedCount} of {statusSummary.totalCount} completed
               </div>
@@ -304,7 +296,7 @@ const DocumentUploadPortal = () => {
             </div>
 
             {/* Status Items */}
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid md:grid-cols-1 gap-4">
               <div className={`flex items-center gap-3 p-3 rounded-lg border ${
                 hasRequiredDocuments() 
                   ? 'border-green-200 bg-green-50' 
@@ -324,26 +316,6 @@ const DocumentUploadPortal = () => {
                   </div>
                 </div>
               </div>
-
-              <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-                esgCompleted 
-                  ? 'border-green-200 bg-green-50' 
-                  : 'border-amber-200 bg-amber-50'
-              }`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  esgCompleted 
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-amber-600 text-white'
-                }`}>
-                  {esgCompleted ? <CheckCircle size={16} /> : <Leaf size={16} />}
-                </div>
-                <div>
-                  <div className="font-medium text-slate-900">ESG Compliance</div>
-                  <div className="text-sm text-slate-600">
-                    {esgCompleted ? 'Questionnaire completed' : 'Pending ESG form'}
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -355,7 +327,7 @@ const DocumentUploadPortal = () => {
                 <div>
                   <h4 className="font-medium text-amber-900">Action Required</h4>
                   <p className="text-sm text-amber-700">
-                    Please complete: {statusSummary.pendingItems.join(', ')}
+                    Please upload: {statusSummary.pendingItems.join(', ')}
                   </p>
                 </div>
               </div>
@@ -383,287 +355,209 @@ const DocumentUploadPortal = () => {
           </div>
         )}
 
-        {/* Main Content Grid */}
-        <div className="grid lg:grid-cols-2 gap-8 mb-8">
-          {/* Document Upload Section */}
-          <div className="space-y-6">
-            {/* Formal Documents */}
-            <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-              <div className="bg-red-50 border-b border-red-200 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="text-red-600" size={24} />
-                    <h3 className="text-lg font-semibold text-slate-900">Formal Documents</h3>
-                  </div>
-                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    hasRequiredDocuments() 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {hasRequiredDocuments() ? 'Complete' : 'Required'}
-                  </div>
+        {/* Main Content - Document Upload Only */}
+        <div className="space-y-6 mb-8">
+          {/* Formal Documents */}
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-red-50 border-b border-red-200 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <FileText className="text-red-600" size={24} />
+                  <h3 className="text-lg font-semibold text-slate-900">Formal Documents</h3>
                 </div>
-              </div>
-
-              <div className="p-6">
-                <p className="text-sm text-slate-600 mb-4">
-                  Upload your formal documents. Government ID and Proof of Address are required.
-                </p>
-
-                {/* Required Documents Status */}
-                <div className="mb-4 p-3 bg-slate-50 rounded-lg">
-                  <div className="text-sm font-medium text-slate-900 mb-2">Required Documents:</div>
-                  <div className="space-y-1">
-                    <div className={`flex items-center gap-2 text-sm ${
-                      uploadedDocs.some(doc => doc.type === 'government_id') 
-                        ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {uploadedDocs.some(doc => doc.type === 'government_id') ? 
-                        <CheckCircle size={16} /> : <AlertCircle size={16} />
-                      }
-                      Government ID
-                    </div>
-                    <div className={`flex items-center gap-2 text-sm ${
-                      uploadedDocs.some(doc => doc.type === 'proof_of_address') 
-                        ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {uploadedDocs.some(doc => doc.type === 'proof_of_address') ? 
-                        <CheckCircle size={16} /> : <AlertCircle size={16} />
-                      }
-                      Proof of Address
-                    </div>
-                  </div>
+                <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  hasRequiredDocuments() 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {hasRequiredDocuments() ? 'Complete' : 'Required'}
                 </div>
-
-                {/* Document Upload Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  {formalDocumentTypes.map((docType) => (
-                    <div key={docType.value} className="relative">
-                      <input
-                        type="file"
-                        multiple
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={(e) => handleDocumentUpload(e.target.files, docType.value, 'formal')}
-                        className="hidden"
-                        id={`formal-${docType.value}`}
-                      />
-                      <label
-                        htmlFor={`formal-${docType.value}`}
-                        className={`flex flex-col items-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
-                          uploadedDocs.some(doc => doc.type === docType.value)
-                            ? 'border-green-300 bg-green-50'
-                            : docType.required
-                              ? 'border-red-300 bg-red-50 hover:border-red-400'
-                              : 'border-slate-300 bg-slate-50 hover:border-slate-400'
-                        }`}
-                      >
-                        <docType.icon size={24} className={`${
-                          uploadedDocs.some(doc => doc.type === docType.value)
-                            ? 'text-green-600'
-                            : docType.required
-                              ? 'text-red-600'
-                              : 'text-slate-600'
-                        }`} />
-                        <span className="text-xs text-center font-medium">
-                          {docType.label}
-                          {docType.required && <span className="text-red-500"> *</span>}
-                        </span>
-                        {uploadedDocs.some(doc => doc.type === docType.value) && (
-                          <CheckCircle size={16} className="text-green-600" />
-                        )}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Uploaded Documents List */}
-                {uploadedDocs.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-sm font-medium text-slate-900 mb-2">Uploaded Documents:</h4>
-                    <div className="space-y-2">
-                      {uploadedDocs.map((doc) => (
-                        <div key={doc.id} className="flex items-center justify-between p-2 bg-slate-50 rounded">
-                          <div className="flex items-center gap-2">
-                            <FileText size={16} className="text-slate-600" />
-                            <span className="text-sm">
-                              {formalDocumentTypes.find(type => type.value === doc.type)?.label}
-                            </span>
-                            <span className="text-xs text-slate-500">
-                              ({doc.files.length} file{doc.files.length > 1 ? 's' : ''})
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => removeDocument(doc.id, 'formal')}
-                            className="text-red-600 hover:text-red-800 p-1"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Supporting Documents */}
-            <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-              <div className="bg-blue-50 border-b border-blue-200 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Heart className="text-blue-600" size={24} />
-                    <h3 className="text-lg font-semibold text-slate-900">Supporting Documents</h3>
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4">
+                Upload your formal documents. Government ID and Proof of Address are required.
+              </p>
+
+              {/* Required Documents Status */}
+              <div className="mb-4 p-3 bg-slate-50 rounded-lg">
+                <div className="text-sm font-medium text-slate-900 mb-2">Required Documents:</div>
+                <div className="space-y-1">
+                  <div className={`flex items-center gap-2 text-sm ${
+                    uploadedDocs.some(doc => doc.type === 'government_id') 
+                      ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {uploadedDocs.some(doc => doc.type === 'government_id') ? 
+                      <CheckCircle size={16} /> : <AlertCircle size={16} />
+                    }
+                    Government ID
                   </div>
-                  <div className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                    Optional
+                  <div className={`flex items-center gap-2 text-sm ${
+                    uploadedDocs.some(doc => doc.type === 'proof_of_address') 
+                      ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {uploadedDocs.some(doc => doc.type === 'proof_of_address') ? 
+                      <CheckCircle size={16} /> : <AlertCircle size={16} />
+                    }
+                    Proof of Address
                   </div>
                 </div>
               </div>
 
-              <div className="p-6">
-                <p className="text-sm text-slate-600 mb-4">
-                  Alternative data sources that can strengthen your application (optional but recommended).
-                </p>
-
-                {/* Supporting Document Upload Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  {supportingDocumentTypes.slice(0, 6).map((docType) => (
-                    <div key={docType.value} className="relative">
-                      <input
-                        type="file"
-                        multiple
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={(e) => handleDocumentUpload(e.target.files, docType.value, 'supporting')}
-                        className="hidden"
-                        id={`supporting-${docType.value}`}
-                      />
-                      <label
-                        htmlFor={`supporting-${docType.value}`}
-                        className={`flex flex-col items-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
-                          supportingDocs.some(doc => doc.type === docType.value)
-                            ? 'border-green-300 bg-green-50'
+              {/* Document Upload Grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {formalDocumentTypes.map((docType) => (
+                  <div key={docType.value} className="relative">
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => handleDocumentUpload(e.target.files, docType.value, 'formal')}
+                      className="hidden"
+                      id={`formal-${docType.value}`}
+                    />
+                    <label
+                      htmlFor={`formal-${docType.value}`}
+                      className={`flex flex-col items-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
+                        uploadedDocs.some(doc => doc.type === docType.value)
+                          ? 'border-green-300 bg-green-50'
+                          : docType.required
+                            ? 'border-red-300 bg-red-50 hover:border-red-400'
                             : 'border-slate-300 bg-slate-50 hover:border-slate-400'
-                        }`}
-                      >
-                        <docType.icon size={24} className={`${
-                          supportingDocs.some(doc => doc.type === docType.value)
-                            ? 'text-green-600'
+                      }`}
+                    >
+                      <docType.icon size={24} className={`${
+                        uploadedDocs.some(doc => doc.type === docType.value)
+                          ? 'text-green-600'
+                          : docType.required
+                            ? 'text-red-600'
                             : 'text-slate-600'
-                        }`} />
-                        <span className="text-xs text-center font-medium">
-                          {docType.label}
-                        </span>
-                        {supportingDocs.some(doc => doc.type === docType.value) && (
-                          <CheckCircle size={16} className="text-green-600" />
-                        )}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Uploaded Supporting Documents List */}
-                {supportingDocs.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-sm font-medium text-slate-900 mb-2">Uploaded Supporting Documents:</h4>
-                    <div className="space-y-2">
-                      {supportingDocs.map((doc) => (
-                        <div key={doc.id} className="flex items-center justify-between p-2 bg-slate-50 rounded">
-                          <div className="flex items-center gap-2">
-                            <FileText size={16} className="text-slate-600" />
-                            <span className="text-sm">
-                              {supportingDocumentTypes.find(type => type.value === doc.type)?.label}
-                            </span>
-                            <span className="text-xs text-slate-500">
-                              ({doc.files.length} file{doc.files.length > 1 ? 's' : ''})
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => removeDocument(doc.id, 'supporting')}
-                            className="text-red-600 hover:text-red-800 p-1"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                      }`} />
+                      <span className="text-xs text-center font-medium">
+                        {docType.label}
+                        {docType.required && <span className="text-red-500"> *</span>}
+                      </span>
+                      {uploadedDocs.some(doc => doc.type === docType.value) && (
+                        <CheckCircle size={16} className="text-green-600" />
+                      )}
+                    </label>
                   </div>
-                )}
+                ))}
               </div>
+
+              {/* Uploaded Documents List */}
+              {uploadedDocs.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium text-slate-900 mb-2">Uploaded Documents:</h4>
+                  <div className="space-y-2">
+                    {uploadedDocs.map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                        <div className="flex items-center gap-2">
+                          <FileText size={16} className="text-slate-600" />
+                          <span className="text-sm">
+                            {formalDocumentTypes.find(type => type.value === doc.type)?.label}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            ({doc.files.length} file{doc.files.length > 1 ? 's' : ''})
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => removeDocument(doc.id, 'formal')}
+                          className="text-red-600 hover:text-red-800 p-1"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Forms Section */}
-          <div className="space-y-6">
-            {/* ESG Compliance Form */}
-            <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-              <div className="bg-green-50 border-b border-green-200 px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Leaf className="text-green-600" size={24} />
-                    <h3 className="text-lg font-semibold text-slate-900">ESG Compliance</h3>
-                  </div>
-                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    esgCompleted 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {esgCompleted ? 'Complete' : 'Required'}
-                  </div>
+          {/* Supporting Documents */}
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-blue-50 border-b border-blue-200 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Heart className="text-blue-600" size={24} />
+                  <h3 className="text-lg font-semibold text-slate-900">Supporting Documents</h3>
+                </div>
+                <div className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                  Optional
                 </div>
               </div>
+            </div>
 
-              <div className="p-6">
-                <p className="text-sm text-slate-600 mb-4">
-                  Complete our Environmental, Social & Governance questionnaire to improve your loan terms.
-                </p>
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4">
+                Alternative data sources that can strengthen your application (optional but recommended).
+              </p>
 
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                    <Users className="text-slate-600" size={20} />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-slate-900">Social Responsibility</div>
-                      <div className="text-xs text-slate-600">Employee welfare, community impact</div>
-                    </div>
+              {/* Supporting Document Upload Grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {supportingDocumentTypes.slice(0, 6).map((docType) => (
+                  <div key={docType.value} className="relative">
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => handleDocumentUpload(e.target.files, docType.value, 'supporting')}
+                      className="hidden"
+                      id={`supporting-${docType.value}`}
+                    />
+                    <label
+                      htmlFor={`supporting-${docType.value}`}
+                      className={`flex flex-col items-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
+                        supportingDocs.some(doc => doc.type === docType.value)
+                          ? 'border-green-300 bg-green-50'
+                          : 'border-slate-300 bg-slate-50 hover:border-slate-400'
+                      }`}
+                    >
+                      <docType.icon size={24} className={`${
+                        supportingDocs.some(doc => doc.type === docType.value)
+                          ? 'text-green-600'
+                          : 'text-slate-600'
+                      }`} />
+                      <span className="text-xs text-center font-medium">
+                        {docType.label}
+                      </span>
+                      {supportingDocs.some(doc => doc.type === docType.value) && (
+                        <CheckCircle size={16} className="text-green-600" />
+                      )}
+                    </label>
                   </div>
+                ))}
+              </div>
 
-                  <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                    <Leaf className="text-slate-600" size={20} />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-slate-900">Environmental Impact</div>
-                      <div className="text-xs text-slate-600">Waste management, energy usage</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
-                    <Shield className="text-slate-600" size={20} />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-slate-900">Governance & Ethics</div>
-                      <div className="text-xs text-slate-600">Business ethics, transparency</div>
-                    </div>
+              {/* Uploaded Supporting Documents List */}
+              {supportingDocs.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium text-slate-900 mb-2">Uploaded Supporting Documents:</h4>
+                  <div className="space-y-2">
+                    {supportingDocs.map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                        <div className="flex items-center gap-2">
+                          <FileText size={16} className="text-slate-600" />
+                          <span className="text-sm">
+                            {supportingDocumentTypes.find(type => type.value === doc.type)?.label}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            ({doc.files.length} file{doc.files.length > 1 ? 's' : ''})
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => removeDocument(doc.id, 'supporting')}
+                          className="text-red-600 hover:text-red-800 p-1"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
-
-                <button
-                  onClick={() => navigate(`/esg-compliance/${applicationId}`)}
-                  className={`w-full mt-4 flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
-                    esgCompleted
-                      ? 'bg-green-100 text-green-800 border border-green-200'
-                      : 'bg-gradient-to-r from-green-600 to-blue-600 text-white hover:from-green-700 hover:to-blue-700 shadow-lg'
-                  }`}
-                >
-                  {esgCompleted ? (
-                    <>
-                      <CheckCircle size={20} />
-                      ESG Form Completed
-                    </>
-                  ) : (
-                    <>
-                      <Leaf size={20} />
-                      Answer ESG Compliance Form
-                    </>
-                  )}
-                </button>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -672,12 +566,12 @@ const DocumentUploadPortal = () => {
         <div className="flex flex-wrap justify-between items-center gap-4 bg-white rounded-lg border border-slate-200 shadow-sm p-6">
           <div>
             <h3 className="font-semibold text-slate-900 mb-1">
-              {statusSummary.allComplete ? 'Ready to Submit' : 'Complete Your Application'}
+              {statusSummary.allComplete ? 'Documents Complete' : 'Complete Document Upload'}
             </h3>
             <p className="text-sm text-slate-600">
               {statusSummary.allComplete 
-                ? 'All sections completed. Submit your application for processing.'
-                : `${statusSummary.pendingItems.length} item${statusSummary.pendingItems.length > 1 ? 's' : ''} remaining: ${statusSummary.pendingItems.join(', ')}`
+                ? 'All required documents uploaded. You can submit or add more supporting documents.'
+                : 'Please upload the required documents to proceed.'
               }
             </p>
           </div>
@@ -713,9 +607,7 @@ const DocumentUploadPortal = () => {
               className={`flex items-center gap-2 px-8 py-2 rounded-lg font-semibold transition-all shadow-lg ${
                 finalSubmitting 
                   ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                  : statusSummary.allComplete
-                    ? 'bg-gradient-to-r from-red-600 to-amber-500 text-white hover:from-red-700 hover:to-amber-600'
-                    : 'bg-gradient-to-r from-amber-600 to-red-600 text-white hover:from-amber-700 hover:to-red-700'
+                  : 'bg-gradient-to-r from-red-600 to-amber-500 text-white hover:from-red-700 hover:to-amber-600'
               }`}
             >
               {finalSubmitting ? (
@@ -726,7 +618,7 @@ const DocumentUploadPortal = () => {
               ) : (
                 <>
                   <CheckCircle size={16} />
-                  Submit Application
+                  Submit Documents
                 </>
               )}
             </button>
