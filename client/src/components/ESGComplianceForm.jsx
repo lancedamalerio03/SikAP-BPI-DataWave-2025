@@ -1,242 +1,102 @@
 // client/src/components/ESGComplianceForm.jsx 
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
-  ArrowLeft, ArrowRight, CheckCircle, Leaf, Users, Shield, 
-  HelpCircle, BarChart3, Award, AlertCircle, Clock
+  ArrowLeft, CheckCircle, Leaf, Users, Shield, 
+  HelpCircle, BarChart3, Award, AlertCircle, Clock, DollarSign
 } from 'lucide-react';
+import { esgAssessmentService } from '../services/esgAssessmentService';
 
 const ESGComplianceForm = () => {
   const navigate = useNavigate();
   const { applicationId } = useParams();
   const [responses, setResponses] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [applicationData, setApplicationData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [assessment, setAssessment] = useState(null);
+  const [error, setError] = useState(null);
 
-  // ESG questionnaire data
-  const esgCategories = [
-    {
-      id: 'environmental',
-      title: 'Environmental Impact',
-      icon: Leaf,
-      color: 'text-green-600',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200',
-      questions: [
-        {
-          id: 'waste_management',
-          question: 'How does your business manage waste?',
-          description: 'Consider waste segregation, disposal methods, and reduction efforts.',
-          options: [
-            { value: 'proper_disposal', label: 'Proper waste segregation and disposal', points: 3 },
-            { value: 'recycling', label: 'Active recycling and waste reduction programs', points: 4 },
-            { value: 'minimal_management', label: 'Basic waste disposal only', points: 2 },
-            { value: 'no_policy', label: 'No specific waste management policy', points: 1 }
-          ]
-        },
-        {
-          id: 'energy_usage',
-          question: 'What type of energy sources does your business primarily use?',
-          description: 'Consider electricity, fuel, and renewable energy adoption.',
-          options: [
-            { value: 'renewable', label: 'Renewable energy sources (solar, wind, etc.)', points: 4 },
-            { value: 'mixed', label: 'Mix of traditional and renewable sources', points: 3 },
-            { value: 'efficient_traditional', label: 'Energy-efficient traditional sources', points: 2 },
-            { value: 'traditional', label: 'Traditional energy sources only', points: 1 }
-          ]
-        },
-        {
-          id: 'environmental_policies',
-          question: 'Does your business have environmental policies?',
-          description: 'Written policies, training, or initiatives for environmental protection.',
-          options: [
-            { value: 'comprehensive', label: 'Comprehensive environmental policies and training', points: 4 },
-            { value: 'basic_policies', label: 'Basic environmental guidelines', points: 3 },
-            { value: 'informal_practices', label: 'Informal environmental practices', points: 2 },
-            { value: 'none', label: 'No specific environmental policies', points: 1 }
-          ]
-        }
-      ]
-    },
-    {
-      id: 'social',
-      title: 'Social Responsibility',
-      icon: Users,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200',
-      questions: [
-        {
-          id: 'employee_welfare',
-          question: 'How does your business support employee welfare?',
-          description: 'Consider benefits, training, work-life balance, and development opportunities.',
-          options: [
-            { value: 'comprehensive', label: 'Comprehensive benefits and development programs', points: 4 },
-            { value: 'basic_benefits', label: 'Basic benefits and fair compensation', points: 3 },
-            { value: 'compliance_only', label: 'Legal compliance requirements only', points: 2 },
-            { value: 'minimal', label: 'Minimal employee support', points: 1 }
-          ]
-        },
-        {
-          id: 'community_impact',
-          question: 'How does your business contribute to the local community?',
-          description: 'Consider local hiring, community programs, and social initiatives.',
-          options: [
-            { value: 'active_programs', label: 'Active community programs and partnerships', points: 4 },
-            { value: 'local_hiring', label: 'Local hiring and sourcing preferences', points: 3 },
-            { value: 'basic_participation', label: 'Basic community participation', points: 2 },
-            { value: 'no_programs', label: 'No specific community programs', points: 1 }
-          ]
-        },
-        {
-          id: 'diversity_inclusion',
-          question: 'How does your business promote diversity and inclusion?',
-          description: 'Consider equal opportunities, non-discrimination, and inclusive practices.',
-          options: [
-            { value: 'formal_policies', label: 'Formal diversity policies and inclusive hiring', points: 4 },
-            { value: 'equal_opportunity', label: 'Equal opportunity practices', points: 3 },
-            { value: 'basic_fairness', label: 'Basic fairness in employment', points: 2 },
-            { value: 'no_policies', label: 'No specific diversity policies', points: 1 }
-          ]
-        }
-      ]
-    },
-    {
-      id: 'governance',
-      title: 'Governance & Ethics',
-      icon: Shield,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-50',
-      borderColor: 'border-purple-200',
-      questions: [
-        {
-          id: 'business_ethics',
-          question: 'How does your business ensure ethical practices?',
-          description: 'Consider ethics policies, training, and compliance measures.',
-          options: [
-            { value: 'written_policies', label: 'Written ethics policies and regular training', points: 4 },
-            { value: 'clear_guidelines', label: 'Clear ethical guidelines for all staff', points: 3 },
-            { value: 'basic_standards', label: 'Basic ethical standards followed', points: 2 },
-            { value: 'informal', label: 'Informal ethical practices only', points: 1 }
-          ]
-        },
-        {
-          id: 'transparency',
-          question: 'How transparent is your business with stakeholders?',
-          description: 'Consider financial reporting, communication, and disclosure practices.',
-          options: [
-            { value: 'regular_reporting', label: 'Regular reporting and open communication', points: 4 },
-            { value: 'stakeholder_updates', label: 'Regular stakeholder updates', points: 3 },
-            { value: 'basic_disclosure', label: 'Basic disclosure when required', points: 2 },
-            { value: 'minimal', label: 'Minimal transparency', points: 1 }
-          ]
-        },
-        {
-          id: 'compliance',
-          question: 'How does your business handle regulatory compliance?',
-          description: 'Consider permits, licenses, tax compliance, and regulatory adherence.',
-          options: [
-            { value: 'proactive', label: 'Proactive compliance management and monitoring', points: 4 },
-            { value: 'systematic', label: 'Systematic compliance tracking', points: 3 },
-            { value: 'reactive', label: 'Reactive compliance when required', points: 2 },
-            { value: 'minimal', label: 'Minimal compliance efforts', points: 1 }
-          ]
-        }
-      ]
-    }
-  ];
+  // Load assessment data on component mount
+  useEffect(() => {
+    loadAssessment();
+  }, [applicationId]);
 
-  // Calculate ESG score
-  const calculateEsgScore = () => {
-    let totalPoints = 0;
-    let maxPoints = 0;
-    
-    esgCategories.forEach(category => {
-      category.questions.forEach(q => {
-        maxPoints += 4; // Maximum points per question
-        const response = responses[q.id];
-        if (response) {
-          const option = q.options.find(opt => opt.value === response);
-          if (option) totalPoints += option.points;
-        }
+  const loadAssessment = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('Loading ESG assessment for application:', applicationId);
+      const assessmentData = await esgAssessmentService.getAssessmentQuestions(applicationId);
+      
+      setAssessment(assessmentData);
+      
+      // Initialize responses with existing answers
+      const initialResponses = {};
+      Object.keys(assessmentData.questions).forEach(key => {
+        initialResponses[key] = assessmentData.questions[key].response || '';
       });
-    });
+      
+      setResponses(initialResponses);
+      
+    } catch (err) {
+      console.error('Error loading assessment:', err);
+      setError('Failed to load ESG assessment questions. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
+  const handleResponseChange = (questionKey, value) => {
+    setResponses(prev => ({
+      ...prev,
+      [questionKey]: value
+    }));
+  };
+
+  // Calculate completion percentage (not ESG score - that's for the AI agent)
+  const calculateCompletionPercentage = () => {
+    if (!assessment) return 0;
+    const totalQuestions = Object.keys(assessment.questions).length;
+    const answeredQuestions = Object.values(responses).filter(response => 
+      response && response.trim() !== ''
+    ).length;
+    
+    return Math.round((answeredQuestions / totalQuestions) * 100);
   };
 
   // Check if form is complete
   const isFormComplete = () => {
-    const totalQuestions = esgCategories.reduce((count, cat) => count + cat.questions.length, 0);
-    return Object.keys(responses).length === totalQuestions;
+    if (!assessment) return false;
+    return Object.keys(assessment.questions).every(key => 
+      responses[key] && responses[key].trim() !== ''
+    );
   };
 
-  // Handle response change
-  const handleResponseChange = (questionId, value) => {
-    setResponses(prev => ({
-      ...prev,
-      [questionId]: value
-    }));
-  };
-
-  // Handle form submission
   const handleSubmit = async () => {
     if (!isFormComplete()) {
       alert('Please answer all questions before submitting.');
       return;
     }
 
-    setSubmitting(true);
-
     try {
-      const esgScore = calculateEsgScore();
+      setSubmitting(true);
       
-      // Calculate category scores
-      const categoryScores = {};
-      esgCategories.forEach(category => {
-        let categoryPoints = 0;
-        let categoryMaxPoints = 0;
-        
-        category.questions.forEach(q => {
-          categoryMaxPoints += 4;
-          const response = responses[q.id];
-          if (response) {
-            const option = q.options.find(opt => opt.value === response);
-            if (option) categoryPoints += option.points;
-          }
-        });
-        
-        categoryScores[category.id] = Math.round((categoryPoints / categoryMaxPoints) * 100);
+      // Structure responses for the service
+      const structuredResponses = {};
+      Object.keys(assessment.questions).forEach(key => {
+        structuredResponses[key] = {
+          question: assessment.questions[key].question,
+          response: responses[key]
+        };
       });
 
-      const submissionData = {
-        applicationId,
-        userId: applicationData?.userId,
-        esgResponses: responses,
-        esgScore,
-        categoryScores,
-        submittedAt: new Date().toISOString(),
-        workflow_type: 'esg_compliance'
-      };
+      await esgAssessmentService.completeAssessment(assessment.id, structuredResponses);
 
-      // Submit to n8n webhook
-      const response = await fetch('https://sikap-2025.app.n8n.cloud/webhook/esg-compliance', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(submissionData)
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      // Redirect back to loans page with success message
+      // Navigate back to loans page with success message
       navigate('/dashboard/loans', {
         state: {
-          message: `ESG Compliance completed! Your ESG Score: ${esgScore}%`,
+          message: 'ESG Assessment submitted successfully! Our AI will analyze your responses.',
           type: 'success'
         }
       });
@@ -249,22 +109,98 @@ const ESGComplianceForm = () => {
     }
   };
 
-  // Get ESG rating based on score
-  const getEsgRating = (score) => {
-    if (score >= 90) return { rating: 'Excellent', color: 'text-green-600', bgColor: 'bg-green-100' };
-    if (score >= 80) return { rating: 'Very Good', color: 'text-green-600', bgColor: 'bg-green-100' };
-    if (score >= 70) return { rating: 'Good', color: 'text-blue-600', bgColor: 'bg-blue-100' };
-    if (score >= 60) return { rating: 'Fair', color: 'text-amber-600', bgColor: 'bg-amber-100' };
-    return { rating: 'Needs Improvement', color: 'text-red-600', bgColor: 'bg-red-100' };
+  // Get completion rating based on percentage
+  const getCompletionRating = (percentage) => {
+    if (percentage === 100) return { rating: 'Ready to Submit', color: 'text-green-600', bgColor: 'bg-green-100' };
+    if (percentage >= 80) return { rating: 'Almost Complete', color: 'text-blue-600', bgColor: 'bg-blue-100' };
+    if (percentage >= 50) return { rating: 'In Progress', color: 'text-amber-600', bgColor: 'bg-amber-100' };
+    return { rating: 'Getting Started', color: 'text-slate-600', bgColor: 'bg-slate-100' };
   };
 
-  const currentScore = calculateEsgScore();
-  const scoreRating = getEsgRating(currentScore);
+  // Get category icon and color
+  const getCategoryConfig = (key) => {
+    if (key === 'environment') return { 
+      icon: Leaf, 
+      color: 'text-green-600', 
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-200',
+      title: 'Environment'
+    };
+    if (key === 'social') return { 
+      icon: Users, 
+      color: 'text-blue-600', 
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200',
+      title: 'Social'
+    };
+    if (key === 'governance') return { 
+      icon: Shield, 
+      color: 'text-purple-600', 
+      bgColor: 'bg-purple-50',
+      borderColor: 'border-purple-200',
+      title: 'Governance'
+    };
+    if (key.startsWith('stability')) return { 
+      icon: DollarSign, 
+      color: 'text-amber-600', 
+      bgColor: 'bg-amber-50',
+      borderColor: 'border-amber-200',
+      title: 'Financial Stability'
+    };
+    return { 
+      icon: AlertCircle, 
+      color: 'text-gray-600', 
+      bgColor: 'bg-gray-50',
+      borderColor: 'border-gray-200',
+      title: 'Other'
+    };
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading ESG Assessment...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={() => navigate('/dashboard/loans')}
+            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Back to Loans
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!assessment) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-slate-600">No assessment data found</p>
+        </div>
+      </div>
+    );
+  }
+
+  const completionPercentage = calculateCompletionPercentage();
+  const completionRating = getCompletionRating(completionPercentage);
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200">
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center gap-4">
             <button
@@ -283,88 +219,73 @@ const ESGComplianceForm = () => {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8">
-        {/* Score Display */}
+        {/* Progress Display */}
         {Object.keys(responses).length > 0 && (
           <div className="mb-8 p-6 bg-white rounded-lg border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-900">Current ESG Score</h2>
+              <h2 className="text-lg font-semibold text-slate-900">Assessment Progress</h2>
               <div className="flex items-center gap-2">
                 <BarChart3 size={20} className="text-slate-600" />
-                <span className="text-2xl font-bold text-slate-900">{currentScore}%</span>
+                <span className="text-2xl font-bold text-slate-900">{completionPercentage}%</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex-1 bg-slate-200 rounded-full h-3">
                 <div 
-                  className="bg-gradient-to-r from-red-500 to-green-500 h-3 rounded-full transition-all duration-500"
-                  style={{ width: `${currentScore}%` }}
+                  className="bg-gradient-to-r from-slate-400 to-green-500 h-3 rounded-full transition-all duration-500"
+                  style={{ width: `${completionPercentage}%` }}
                 ></div>
               </div>
-              <div className={`px-3 py-1 rounded-full text-sm font-medium ${scoreRating.bgColor} ${scoreRating.color}`}>
-                {scoreRating.rating}
+              <div className={`px-3 py-1 rounded-full text-sm font-medium ${completionRating.bgColor} ${completionRating.color}`}>
+                {completionRating.rating}
               </div>
             </div>
             <p className="text-sm text-slate-600 mt-2">
-              Complete all questions to get your final ESG compliance score
+              Complete all questions to submit for AI analysis and scoring
             </p>
           </div>
         )}
 
-        {/* ESG Categories */}
+        {/* Questions from Supabase */}
         <div className="space-y-8">
-          {esgCategories.map((category) => (
-            <div key={category.id} className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-              {/* Category Header */}
-              <div className={`${category.bgColor} ${category.borderColor} border-b px-6 py-4`}>
-                <div className="flex items-center gap-3">
-                  <category.icon className={`${category.color}`} size={24} />
-                  <h3 className="text-lg font-semibold text-slate-900">{category.title}</h3>
+          {Object.entries(assessment.questions).map(([key, question]) => {
+            const config = getCategoryConfig(key);
+            const IconComponent = config.icon;
+            
+            return (
+              <div key={key} className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                {/* Category Header */}
+                <div className={`${config.bgColor} ${config.borderColor} border-b px-6 py-4`}>
+                  <div className="flex items-center gap-3">
+                    <IconComponent className={`${config.color}`} size={24} />
+                    <h3 className="text-lg font-semibold text-slate-900">{config.title}</h3>
+                  </div>
+                </div>
+
+                {/* Question */}
+                <div className="p-6 space-y-4">
+                  <div>
+                    <h4 className="font-medium text-slate-900 mb-2">
+                      {question.question}
+                    </h4>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Your Response *
+                    </label>
+                    <textarea
+                      value={responses[key] || ''}
+                      onChange={(e) => handleResponseChange(key, e.target.value)}
+                      placeholder="Please provide your detailed response..."
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-vertical"
+                      rows={4}
+                    />
+                  </div>
                 </div>
               </div>
-
-              {/* Questions */}
-              <div className="p-6 space-y-6">
-                {category.questions.map((question, qIndex) => (
-                  <div key={question.id} className="space-y-3">
-                    <div>
-                      <h4 className="font-medium text-slate-900 mb-1">
-                        {qIndex + 1}. {question.question}
-                      </h4>
-                      <p className="text-sm text-slate-600">{question.description}</p>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {question.options.map((option) => (
-                        <label
-                          key={option.value}
-                          className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                            responses[question.id] === option.value
-                              ? 'border-red-300 bg-red-50'
-                              : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name={question.id}
-                            value={option.value}
-                            checked={responses[question.id] === option.value}
-                            onChange={(e) => handleResponseChange(question.id, e.target.value)}
-                            className="mt-1 text-red-600 focus:ring-red-500"
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium text-slate-900">{option.label}</div>
-                            <div className="text-xs text-slate-500 mt-1">
-                              Impact Score: {option.points}/4
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Submit Section */}
@@ -376,8 +297,8 @@ const ESGComplianceForm = () => {
               </h3>
               <p className="text-sm text-slate-600">
                 {isFormComplete() 
-                  ? `Your ESG compliance score: ${currentScore}% (${scoreRating.rating})`
-                  : `${Object.keys(responses).length} of ${esgCategories.reduce((count, cat) => count + cat.questions.length, 0)} questions answered`
+                  ? `Assessment ready for submission (${completionPercentage}% complete)`
+                  : `${Object.values(responses).filter(r => r && r.trim()).length} of ${Object.keys(assessment.questions).length} questions answered`
                 }
               </p>
             </div>
@@ -399,7 +320,7 @@ const ESGComplianceForm = () => {
               ) : (
                 <>
                   <CheckCircle size={20} />
-                  Submit ESG Compliance
+                  Submit for AI Analysis
                 </>
               )}
             </button>
