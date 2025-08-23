@@ -1,5 +1,6 @@
 // client/src/components/DocumentUploadPortal.jsx
 
+import { supabase } from '../lib/supabase';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { 
@@ -145,74 +146,58 @@ const DocumentUploadPortal = () => {
     if (!statusSummary.allComplete) {
       const pendingText = statusSummary.pendingItems.join(', ');
       const proceed = window.confirm(
-        `You have pending items: ${pendingText}. Do you want to submit anyway? This may affect your application processing.`
+        `You have pending items: ${pendingText}. Do you want to submit anyway?`
       );
+      
       if (!proceed) return;
     }
-
+  
     setFinalSubmitting(true);
     setUploadStatus('Submitting documents...');
-
+  
     try {
-      const submissionData = {
-        applicationId: applicationData?.id,
-        userId: applicationData?.userId,
-        formalDocuments: uploadedDocs.map(doc => ({
-          type: doc.type,
-          files: doc.files.map(file => ({
-            name: file.name,
-            size: file.size
-          })),
-          uploadedAt: doc.uploadedAt
-        })),
-        supportingDocuments: supportingDocs.map(doc => ({
-          type: doc.type,
-          files: doc.files.map(file => ({
-            name: file.name,
-            size: file.size
-          })),
-          uploadedAt: doc.uploadedAt
-        })),
-        completionStatus: getCompletionStatus(),
-        submittedAt: new Date().toISOString(),
-        workflow_type: 'document_submission'
-      };
-
-      console.log('Submitting documents:', submissionData);
-
-      // Submit to n8n webhook
-      const response = await fetch('https://sikap-2025.app.n8n.cloud/webhook/document-submission', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(submissionData)
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Update the documents_completed field in Supabase
+      const { data, error } = await supabase
+        .from('preloan_applications')
+        .update({ documents_completed: true })
+        .eq('id', applicationId)
+        .select()
+        .single();
+  
+      if (error) {
+        console.error('Supabase update error:', error);
+        throw new Error(`Failed to update application: ${error.message}`);
       }
-
-      const result = await response.json();
-      console.log('Document submission response:', result);
-
-      setUploadStatus('Documents submitted successfully!');
+  
+      console.log('Documents completed successfully updated in Supabase:', data);
       
-      // Redirect to loans dashboard after success
+      // Show success message
+      setUploadStatus('Documents submitted successfully! Your application has been updated.');
+      
+      // Optional: Update local state if you're using it
+      if (applicationData) {
+        setApplicationData(prev => ({
+          ...prev,
+          documents_completed: true
+        }));
+      }
+  
+      // Optional: Navigate to dashboard or show success page after a delay
       setTimeout(() => {
-        navigate('/dashboard/loans', { 
+        navigate('/dashboard/loans', {
           state: { 
-            message: 'Documents submitted successfully! You will receive updates via SMS and email.',
-            type: 'success'
+            message: 'Documents submitted successfully! Your loan application has been updated.' 
           }
         });
       }, 2000);
-
+  
     } catch (error) {
       console.error('Error submitting documents:', error);
-      setUploadStatus('Failed to submit documents. Please try again.');
+      setUploadStatus(`Error: ${error.message}`);
     } finally {
       setFinalSubmitting(false);
+      // Clear status message after some time
+      setTimeout(() => setUploadStatus(''), 5000);
     }
   };
 
