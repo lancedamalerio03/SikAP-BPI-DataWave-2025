@@ -22,8 +22,10 @@ import AgentsPage from './components/dashboard/AgentsPage';
 import ChatbotPage from './components/dashboard/ChatbotPage';
 import ProfilePage from './components/dashboard/ProfilePage';
 
-// NEW: Document Upload Portal
+// Portals + Forms
 import DocumentUploadPortal from './components/DocumentUploadPortal';
+import ESGComplianceForm from './components/ESGComplianceForm';
+import AssetDeclarationForm from './components/AssetDeclarationForm';
 
 // Loan Officer Dashboard imports - Simplified MVP
 import LoanOfficerDashboard from './components/officer/LoanOfficerDashboard';
@@ -143,12 +145,32 @@ function App() {
               } 
             />
 
-            {/* NEW: Document Upload Route */}
+            {/* Document Upload Route */}
             <Route 
               path="/loans/:applicationId/documents" 
               element={
                 <ProtectedRoute>
                   <DocumentUploadWrapper />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* ESG Compliance Form Route */}
+            <Route 
+              path="/esg-compliance/:applicationId" 
+              element={
+                <ProtectedRoute>
+                  <ESGComplianceForm />
+                </ProtectedRoute>
+              } 
+            />
+
+            {/* Asset Declaration Form Route */}
+            <Route 
+              path="/asset-declaration/:applicationId" 
+              element={
+                <ProtectedRoute>
+                  <AssetDeclarationForm />
                 </ProtectedRoute>
               } 
             />
