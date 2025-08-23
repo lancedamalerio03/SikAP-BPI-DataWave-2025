@@ -11,7 +11,8 @@ const WEBHOOK_ENDPOINTS = {
   PRELOAN_APPLICATION: 'preloan-application',
   LOAN_APPLICATION: 'loan-application',
   DOCUMENT_UPLOAD: 'document-upload',
-  USER_REGISTRATION: 'user-registration'
+  USER_REGISTRATION: 'user-registration',
+  ESG_ANALYSIS: 'esg-analysis'
 }
 
 class WebhookService {
@@ -177,6 +178,59 @@ class WebhookService {
     }
 
     return this.sendToWebhook(WEBHOOK_ENDPOINTS.PRELOAN_APPLICATION, payload)
+  }
+
+  /**
+   * Submit ESG assessment data to n8n webhook
+   * @param {string} applicationId - The application ID
+   * @param {object} assessmentData - Complete ESG assessment data
+   * @param {object} user - User data
+   * @returns {Promise} ESG submission result
+   */
+  async submitESGAssessment(applicationId, assessmentData, user) {
+    const submissionId = `ESG-${Date.now()}`
+    
+    const payload = {
+      submissionId,
+      applicationId,
+      submittedAt: new Date().toISOString(),
+      user: this.sanitizeUserData(user),
+      esgData: {
+        assessment_id: assessmentData.id,
+        application_id: applicationId,
+        environment: {
+          questions: assessmentData.environment?.questions || [],
+          responses: assessmentData.environment?.responses || []
+        },
+        social: {
+          questions: assessmentData.social?.questions || [],
+          responses: assessmentData.social?.responses || []
+        },
+        governance: {
+          questions: assessmentData.governance?.questions || [],
+          responses: assessmentData.governance?.responses || []
+        },
+        stability_1: {
+          questions: assessmentData.stability_1?.questions || [],
+          responses: assessmentData.stability_1?.responses || []
+        },
+        stability_2: {
+          questions: assessmentData.stability_2?.questions || [],
+          responses: assessmentData.stability_2?.responses || []
+        },
+        stability_3: {
+          questions: assessmentData.stability_3?.questions || [],
+          responses: assessmentData.stability_3?.responses || []
+        },
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        created_at: assessmentData.created_at,
+        updated_at: new Date().toISOString()
+      },
+      workflow_type: 'esg_analysis'
+    }
+
+    return this.sendToWebhook(WEBHOOK_ENDPOINTS.ESG_ANALYSIS, payload)
   }
 
   /**

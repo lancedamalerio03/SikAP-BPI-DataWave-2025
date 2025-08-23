@@ -26,37 +26,31 @@ export const esgAssessmentService = {
         throw new Error('No ESG assessment found for this application')
       }
 
-      // Parse and structure the questions
+      // Parse and structure the questions based on the new format
       const questions = {
         environment: {
-          category: 'Environment',
-          question: data.environment?.question || '',
-          response: data.environment?.response || ''
+          questions: data.environment?.questions || [],
+          responses: data.environment?.responses || []
         },
         social: {
-          category: 'Social',
-          question: data.social?.question || '',
-          response: data.social?.response || ''
+          questions: data.social?.questions || [],
+          responses: data.social?.responses || []
         },
         governance: {
-          category: 'Governance',
-          question: data.governance?.question || '',
-          response: data.governance?.response || ''
+          questions: data.governance?.questions || [],
+          responses: data.governance?.responses || []
         },
         stability_1: {
-          category: 'Financial Stability 1',
-          question: data.stability_1?.question || '',
-          response: data.stability_1?.response || ''
+          questions: data.stability_1?.questions || [],
+          responses: data.stability_1?.responses || []
         },
         stability_2: {
-          category: 'Financial Stability 2',
-          question: data.stability_2?.question || '',
-          response: data.stability_2?.response || ''
+          questions: data.stability_2?.questions || [],
+          responses: data.stability_2?.responses || []
         },
         stability_3: {
-          category: 'Financial Stability 3',
-          question: data.stability_3?.question || '',
-          response: data.stability_3?.response || ''
+          questions: data.stability_3?.questions || [],
+          responses: data.stability_3?.responses || []
         }
       }
 
@@ -78,7 +72,7 @@ export const esgAssessmentService = {
   },
 
   /**
-   * Update ESG assessment responses
+   * Update ESG assessment responses (for auto-save functionality)
    * @param {string} assessmentId - The ESG assessment ID
    * @param {Object} responses - The responses object
    * @returns {Promise} - Updated assessment data
@@ -90,28 +84,28 @@ export const esgAssessmentService = {
       // Structure the responses back to the JSONB format expected by the database
       const updateData = {
         environment: {
-          question: responses.environment?.question || '',
-          response: responses.environment?.response || null
+          questions: responses.environment?.questions || [],
+          responses: responses.environment?.responses || []
         },
         social: {
-          question: responses.social?.question || '',
-          response: responses.social?.response || null
+          questions: responses.social?.questions || [],
+          responses: responses.social?.responses || []
         },
         governance: {
-          question: responses.governance?.question || '',
-          response: responses.governance?.response || null
+          questions: responses.governance?.questions || [],
+          responses: responses.governance?.responses || []
         },
         stability_1: {
-          question: responses.stability_1?.question || '',
-          response: responses.stability_1?.response || null
+          questions: responses.stability_1?.questions || [],
+          responses: responses.stability_1?.responses || []
         },
         stability_2: {
-          question: responses.stability_2?.question || '',
-          response: responses.stability_2?.response || null
+          questions: responses.stability_2?.questions || [],
+          responses: responses.stability_2?.responses || []
         },
         stability_3: {
-          question: responses.stability_3?.question || '',
-          response: responses.stability_3?.response || null
+          questions: responses.stability_3?.questions || [],
+          responses: responses.stability_3?.responses || []
         },
         updated_at: new Date().toISOString()
       }
@@ -137,47 +131,289 @@ export const esgAssessmentService = {
   },
 
   /**
-   * Complete ESG assessment and calculate score
+   * Get assessment by ID
    * @param {string} assessmentId - The ESG assessment ID
-   * @param {Object} responses - The final responses
-   * @returns {Promise} - Completed assessment data
+   * @returns {Promise} - Assessment data
    */
-  async completeAssessment(assessmentId, responses) {
+  async getAssessmentById(assessmentId) {
     try {
-      console.log('Completing ESG assessment:', assessmentId)
+      const { data, error } = await supabase
+        .from('esg_assessments')
+        .select('*')
+        .eq('id', assessmentId)
+        .single()
 
-      // Calculate a basic ESG score (you can implement more sophisticated scoring)
-      const esgScore = this.calculateESGScore(responses)
+      if (error) {
+        console.error('Error fetching assessment by ID:', error)
+        throw error
+      }
 
-      const updateData = {
-        environment: {
-          question: responses.environment?.question || '',
-          response: responses.environment?.response || null
-        },
-        social: {
-          question: responses.social?.question || '',
-          response: responses.social?.response || null
-        },
-        governance: {
-          question: responses.governance?.question || '',
-          response: responses.governance?.response || null
-        },
-        stability_1: {
-          question: responses.stability_1?.question || '',
-          response: responses.stability_1?.response || null
-        },
-        stability_2: {
-          question: responses.stability_2?.question || '',
-          response: responses.stability_2?.response || null
-        },
-        stability_3: {
-          question: responses.stability_3?.question || '',
-          response: responses.stability_3?.response || null
-        },
-        esg_score: esgScore,
-        status: 'completed',
-        completed_at: new Date().toISOString(),
+      return data
+
+    } catch (error) {
+      console.error('Error in getAssessmentById:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Create a new ESG assessment (usually called by n8n workflow)
+   * @param {string} applicationId - The preloan_applications ID
+   * @param {Object} questionsData - The questions data from n8n workflow
+   * @returns {Promise} - Created assessment data
+   */
+  async createAssessment(applicationId, questionsData) {
+    try {
+      console.log('Creating ESG assessment for application:', applicationId)
+
+      const assessmentData = {
+        application_id: applicationId,
+        environment: questionsData.environment || { questions: [], responses: [] },
+        social: questionsData.social || { questions: [], responses: [] },
+        governance: questionsData.governance || { questions: [], responses: [] },
+        stability_1: questionsData.stability_1 || { questions: [], responses: [] },
+        stability_2: questionsData.stability_2 || { questions: [], responses: [] },
+        stability_3: questionsData.stability_3 || { questions: [], responses: [] },
+        esg_score: null,
+        status: 'generated',
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
+      }
+
+      const { data, error } = await supabase
+        .from('esg_assessments')
+        .insert(assessmentData)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error creating ESG assessment:', error)
+        throw error
+      }
+
+      return data
+
+    } catch (error) {
+      console.error('Error in createAssessment:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Delete an ESG assessment
+   * @param {string} assessmentId - The ESG assessment ID
+   * @returns {Promise} - Deletion result
+   */
+  async deleteAssessment(assessmentId) {
+    try {
+      const { data, error } = await supabase
+        .from('esg_assessments')
+        .delete()
+        .eq('id', assessmentId)
+        .select()
+
+      if (error) {
+        console.error('Error deleting ESG assessment:', error)
+        throw error
+      }
+
+      return data
+
+    } catch (error) {
+      console.error('Error in deleteAssessment:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Get all assessments for a specific application
+   * @param {string} applicationId - The preloan_applications ID
+   * @returns {Promise} - Array of assessments
+   */
+  async getAssessmentsByApplicationId(applicationId) {
+    try {
+      const { data, error } = await supabase
+        .from('esg_assessments')
+        .select('*')
+        .eq('application_id', applicationId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching assessments by application ID:', error)
+        throw error
+      }
+
+      return data || []
+
+    } catch (error) {
+      console.error('Error in getAssessmentsByApplicationId:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Calculate basic ESG Score (for reference - actual scoring done by AI)
+   * @param {Object} responses - All category responses
+   * @returns {number} - ESG score (0-100)
+   */
+  calculateBasicESGScore(responses) {
+    try {
+      let totalScore = 0
+      let categoryCount = 0
+
+      // Score each category
+      Object.keys(responses).forEach(categoryKey => {
+        const category = responses[categoryKey]
+        if (category && category.responses && category.responses.length > 0) {
+          let categoryScore = 0
+          let validResponses = 0
+
+          category.responses.forEach((response, index) => {
+            if (response && response.toString().trim() !== '') {
+              const isOpenEnded = index === 0
+              const isLikertScale = index > 0
+
+              if (isOpenEnded) {
+                // Score open-ended responses based on content quality
+                const responseLength = response.length
+                if (responseLength > 100) {
+                  categoryScore += 90 // Excellent detailed response
+                } else if (responseLength > 50) {
+                  categoryScore += 80 // Good response
+                } else if (responseLength > 20) {
+                  categoryScore += 70 // Adequate response
+                } else {
+                  categoryScore += 50 // Minimal response
+                }
+              } else if (isLikertScale) {
+                // Score Likert scale responses (1-5 scale)
+                const numericValue = parseInt(response)
+                if (numericValue >= 4) {
+                  categoryScore += 85 // Positive responses (4-5)
+                } else if (numericValue === 3) {
+                  categoryScore += 65 // Neutral response
+                } else if (numericValue >= 1) {
+                  categoryScore += 40 // Negative responses (1-2)
+                } else {
+                  categoryScore += 0 // Invalid response
+                }
+              }
+              
+              validResponses++
+            }
+          })
+
+          if (validResponses > 0) {
+            totalScore += categoryScore / validResponses
+            categoryCount++
+          }
+        }
+      })
+
+      // Calculate average score across categories
+      const finalScore = categoryCount > 0 ? Math.round(totalScore / categoryCount) : 0
+      
+      // Ensure score is within 0-100 range
+      return Math.max(0, Math.min(100, finalScore))
+
+    } catch (error) {
+      console.error('Error calculating ESG score:', error)
+      return 0
+    }
+  },
+
+  /**
+   * Get ESG assessment statistics for dashboard
+   * @param {string} applicationId - The preloan_applications ID
+   * @returns {Promise} - Assessment statistics
+   */
+  async getAssessmentStats(applicationId) {
+    try {
+      const { data, error } = await supabase
+        .from('esg_assessments')
+        .select('status, esg_score, created_at, completed_at')
+        .eq('application_id', applicationId)
+
+      if (error) {
+        console.error('Error fetching assessment stats:', error)
+        throw error
+      }
+
+      const stats = {
+        total: data.length,
+        completed: data.filter(a => a.status === 'completed').length,
+        pending: data.filter(a => a.status === 'generated').length,
+        average_score: 0,
+        latest_score: null,
+        completion_rate: 0
+      }
+
+      const completedAssessments = data.filter(a => a.esg_score !== null)
+      if (completedAssessments.length > 0) {
+        stats.average_score = Math.round(
+          completedAssessments.reduce((sum, a) => sum + a.esg_score, 0) / completedAssessments.length
+        )
+        stats.latest_score = completedAssessments[completedAssessments.length - 1].esg_score
+      }
+
+      if (stats.total > 0) {
+        stats.completion_rate = Math.round((stats.completed / stats.total) * 100)
+      }
+
+      return stats
+
+    } catch (error) {
+      console.error('Error in getAssessmentStats:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Check if ESG assessment exists for application
+   * @param {string} applicationId - The preloan_applications ID
+   * @returns {Promise<boolean>} - Whether assessment exists
+   */
+  async hasAssessment(applicationId) {
+    try {
+      const { data, error } = await supabase
+        .from('esg_assessments')
+        .select('id')
+        .eq('application_id', applicationId)
+        .limit(1)
+
+      if (error) {
+        console.error('Error checking assessment existence:', error)
+        return false
+      }
+
+      return data && data.length > 0
+
+    } catch (error) {
+      console.error('Error in hasAssessment:', error)
+      return false
+    }
+  },
+
+  /**
+   * Update assessment status
+   * @param {string} assessmentId - The ESG assessment ID
+   * @param {string} status - New status ('generated', 'completed', 'analyzed')
+   * @param {number|null} esgScore - Optional ESG score
+   * @returns {Promise} - Updated assessment data
+   */
+  async updateAssessmentStatus(assessmentId, status, esgScore = null) {
+    try {
+      const updateData = {
+        status,
+        updated_at: new Date().toISOString()
+      }
+
+      if (status === 'completed' && !updateData.completed_at) {
+        updateData.completed_at = new Date().toISOString()
+      }
+
+      if (esgScore !== null) {
+        updateData.esg_score = esgScore
       }
 
       const { data, error } = await supabase
@@ -188,64 +424,15 @@ export const esgAssessmentService = {
         .single()
 
       if (error) {
-        console.error('Error completing ESG assessment:', error)
+        console.error('Error updating assessment status:', error)
         throw error
       }
 
       return data
 
     } catch (error) {
-      console.error('Error in completeAssessment:', error)
+      console.error('Error in updateAssessmentStatus:', error)
       throw error
-    }
-  },
-
-  /**
-   * Calculate ESG Score based on responses
-   * This is a basic implementation - you can make it more sophisticated
-   * @param {Object} responses - The responses object
-   * @returns {number} - ESG score (0-100)
-   */
-  calculateESGScore(responses) {
-    let totalScore = 0
-    let answeredQuestions = 0
-
-    // Simple scoring: each answered question gets points
-    Object.values(responses).forEach(response => {
-      if (response?.response && response.response.trim() !== '') {
-        answeredQuestions++
-        // Give basic points for having an answer (you can implement more sophisticated scoring)
-        totalScore += 16.67 // 100/6 questions = ~16.67 points per question
-      }
-    })
-
-    // Return score rounded to nearest integer
-    return Math.round(totalScore)
-  },
-
-  /**
-   * Check if user has ESG assessment for their loan
-   * @param {string} applicationId - The preloan_applications ID
-   * @returns {Promise<boolean>} - Whether assessment exists
-   */
-  async hasAssessment(applicationId) {
-    try {
-      const { data, error } = await supabase
-        .from('esg_assessments')
-        .select('id')
-        .eq('application_id', applicationId)
-        .maybeSingle()
-
-      if (error) {
-        console.error('Error checking ESG assessment:', error)
-        return false
-      }
-
-      return !!data
-
-    } catch (error) {
-      console.error('Error in hasAssessment:', error)
-      return false
     }
   }
 }
