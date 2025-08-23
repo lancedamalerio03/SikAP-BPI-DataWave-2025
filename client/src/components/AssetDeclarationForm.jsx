@@ -55,6 +55,10 @@ const AssetDeclarationForm = () => {
   const [assetForm, setAssetForm] = useState({
     name: '',
     category: '',
+    brand: '',
+    model: '',
+    documentType: '',
+    purchaseDate: '',
     estimatedValue: '',
     condition: '',
     description: '',
@@ -76,10 +80,18 @@ const AssetDeclarationForm = () => {
 
   // Condition options
   const conditionOptions = [
-    { value: 'excellent', label: 'Excellent', description: 'Like new, minimal wear', multiplier: 1.0 },
+    { value: 'new', label: 'New', description: 'Brand new or barely used', multiplier: 1.0 },
     { value: 'good', label: 'Good', description: 'Minor signs of use, fully functional', multiplier: 0.85 },
     { value: 'fair', label: 'Fair', description: 'Noticeable wear but still functional', multiplier: 0.65 },
     { value: 'poor', label: 'Poor', description: 'Significant wear, may need repairs', multiplier: 0.45 }
+  ];
+
+  // Document type options
+  const documentTypeOptions = [
+    { value: 'receipt', label: 'Official Receipt' },
+    { value: 'or_cr', label: 'OR/CR (for vehicles)' },
+    { value: 'warranty', label: 'Warranty Card' },
+    { value: 'none', label: 'No Documentation' }
   ];
 
   // Handle photo upload
@@ -114,10 +126,46 @@ const AssetDeclarationForm = () => {
     }));
   };
 
+  // Validate form fields
+  const validateForm = () => {
+    const requiredFields = {
+      category: 'Type of Asset',
+      name: 'Asset Name',
+      brand: 'Brand',
+      model: 'Model',
+      documentType: 'Document Type',
+      purchaseDate: 'Date of Purchase',
+      condition: 'Current Condition',
+      estimatedValue: 'Estimated Value'
+    };
+
+    const missingFields = [];
+    for (const [field, label] of Object.entries(requiredFields)) {
+      if (!assetForm[field]) {
+        missingFields.push(label);
+      }
+    }
+
+    if (assetForm.photos.length === 0) {
+      missingFields.push('Asset Photos');
+    }
+
+    if (missingFields.length > 0) {
+      alert(`Please fill in the following required fields:\n${missingFields.join('\n')}`);
+      return false;
+    }
+
+    if (Number(assetForm.estimatedValue) <= 0) {
+      alert('Estimated value must be greater than 0');
+      return false;
+    }
+
+    return true;
+  };
+
   // Add asset
   const handleAddAsset = () => {
-    if (!assetForm.name || !assetForm.category || !assetForm.estimatedValue || !assetForm.condition) {
-      alert('Please fill in all required fields');
+    if (!validateForm()) {
       return;
     }
 
@@ -132,6 +180,10 @@ const AssetDeclarationForm = () => {
     setAssetForm({
       name: '',
       category: '',
+      brand: '',
+      model: '',
+      documentType: '',
+      purchaseDate: '',
       estimatedValue: '',
       condition: '',
       description: '',
@@ -189,26 +241,50 @@ const AssetDeclarationForm = () => {
         applicationId,
         userId: applicationData?.user_id || currentUser.id,
         declaredAssets: assets.map(asset => ({
+          // Asset Details
           name: asset.name,
           category: asset.category,
-          estimatedValue: Number(asset.estimatedValue),
-
+          brand: asset.brand,
+          model: asset.model,
+          
+          // Ownership Proof
+          documentType: asset.documentType,
+          purchaseDate: asset.purchaseDate,
+          
+          // Condition & Value
           condition: asset.condition,
+          estimatedValue: Number(asset.estimatedValue),
+          
+          // Additional Details
           description: asset.description,
           photosCount: asset.photos?.length || 0,
-          addedAt: asset.addedAt
+          addedAt: asset.addedAt,
+          
+          // Photo URLs will be handled by the backend storage
+          photos: asset.photos.map(photo => ({
+            url: photo.url,
+            type: photo.type || 'asset', // 'asset' or 'identification'
+            name: photo.name
+          }))
         })),
         summary: {
           totalAssets: assets.length,
           totalValue: calculateTotalValue(),
-
-          categoryBreakdown: assetCategories.map(category => ({
-            category: category.value,
-            count: assets.filter(asset => asset.category === category.value).length,
-            value: assets
-              .filter(asset => asset.category === category.value)
-              .reduce((sum, asset) => sum + Number(asset.estimatedValue), 0)
-          })).filter(cat => cat.count > 0)
+          categoryBreakdown: assetCategories.map(category => {
+            const categoryAssets = assets.filter(asset => asset.category === category.value);
+            return {
+              category: category.value,
+              count: categoryAssets.length,
+              value: categoryAssets.reduce((sum, asset) => sum + Number(asset.estimatedValue), 0),
+              items: categoryAssets.map(asset => ({
+                name: asset.name,
+                brand: asset.brand,
+                model: asset.model,
+                value: Number(asset.estimatedValue),
+                condition: asset.condition
+              }))
+            };
+          }).filter(cat => cat.count > 0)
         }
       };
 
@@ -470,24 +546,14 @@ const AssetDeclarationForm = () => {
               </button>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              {/* Asset Type Section */}
+              <div className="bg-slate-50 p-4 rounded-lg">
+                <h4 className="font-medium text-slate-900 mb-4">1. Asset Details</h4>
+                <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Asset Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={assetForm.name}
-                  onChange={handleInputChange}
-                  placeholder="e.g., Toyota Vios 2020, MacBook Pro, etc."
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Category <span className="text-red-500">*</span>
+                      Type of Asset <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="category"
@@ -495,7 +561,7 @@ const AssetDeclarationForm = () => {
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 >
-                  <option value="">Select a category</option>
+                      <option value="">Select asset type</option>
                   {assetCategories.map(category => (
                     <option key={category.value} value={category.value}>
                       {category.label}
@@ -511,21 +577,94 @@ const AssetDeclarationForm = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Estimated Value (₱) <span className="text-red-500">*</span>
+                      Asset Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={assetForm.name}
+                      onChange={handleInputChange}
+                      placeholder="e.g., Toyota Vios, iPhone 13, etc."
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Brand <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="number"
-                  name="estimatedValue"
-                  value={assetForm.estimatedValue}
+                      type="text"
+                      name="brand"
+                      value={assetForm.brand}
                   onChange={handleInputChange}
-                  placeholder="Enter estimated market value"
+                      placeholder="e.g., Toyota, Apple, Samsung"
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Condition <span className="text-red-500">*</span>
+                      Model <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="model"
+                      value={assetForm.model}
+                      onChange={handleInputChange}
+                      placeholder="e.g., Vios 1.5G, iPhone 13 Pro"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Ownership Proof Section */}
+              <div className="bg-slate-50 p-4 rounded-lg">
+                <h4 className="font-medium text-slate-900 mb-4">2. Ownership Proof</h4>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Document Type <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      name="documentType"
+                      value={assetForm.documentType}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    >
+                      <option value="">Select document type</option>
+                      {documentTypeOptions.map(doc => (
+                        <option key={doc.value} value={doc.value}>
+                          {doc.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Date of Purchase <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="month"
+                      name="purchaseDate"
+                      value={assetForm.purchaseDate}
+                      onChange={handleInputChange}
+                      max={new Date().toISOString().slice(0, 7)}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Condition & Value Section */}
+              <div className="bg-slate-50 p-4 rounded-lg">
+                <h4 className="font-medium text-slate-900 mb-4">3. Condition & Estimated Value</h4>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Current Condition <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="condition"
@@ -540,7 +679,22 @@ const AssetDeclarationForm = () => {
                     </option>
                   ))}
                 </select>
+                  </div>
 
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Estimated Value (₱) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      name="estimatedValue"
+                      value={assetForm.estimatedValue}
+                      onChange={handleInputChange}
+                      placeholder="Enter estimated resale value"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -558,11 +712,18 @@ const AssetDeclarationForm = () => {
               />
             </div>
 
-            {/* Photo Upload */}
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Photos (Optional but recommended)
-              </label>
+            {/* Verification Evidence Section */}
+            <div className="mt-6 bg-slate-50 p-4 rounded-lg">
+              <h4 className="font-medium text-slate-900 mb-4">4. Verification Evidence</h4>
+              
+              {/* Asset Photos */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Asset Photos <span className="text-red-500">*</span>
+                </label>
+                <p className="text-sm text-slate-600 mb-3">
+                  Upload clear photos of the asset from different angles (front, back, sides)
+                </p>
               
               <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
                 <input
@@ -575,13 +736,42 @@ const AssetDeclarationForm = () => {
                 />
                 <label htmlFor="photo-upload" className="cursor-pointer">
                   <Camera className="mx-auto mb-4 text-slate-400" size={48} />
-                  <p className="text-slate-600 mb-2">Click to upload photos</p>
+                    <p className="text-slate-600 mb-2">Click to upload asset photos</p>
                   <p className="text-xs text-slate-500">PNG, JPG up to 10MB each</p>
-                </label>
+                  </label>
+                </div>
               </div>
 
+              {/* Serial/Engine/IMEI Number Photos */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Serial/Engine/IMEI Number Photos
+                </label>
+                <p className="text-sm text-slate-600 mb-3">
+                  Upload clear photos of any identification numbers (serial number, engine number, IMEI, etc.)
+                </p>
+                
+                <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => handlePhotoUpload(e.target.files)}
+                    className="hidden"
+                    id="id-photo-upload"
+                  />
+                  <label htmlFor="id-photo-upload" className="cursor-pointer">
+                    <Camera className="mx-auto mb-4 text-slate-400" size={48} />
+                    <p className="text-slate-600 mb-2">Click to upload identification number photos</p>
+                    <p className="text-xs text-slate-500">PNG, JPG up to 10MB each</p>
+                  </label>
+                </div>
+              </div>
+
+              {/* Photo Preview */}
               {assetForm.photos.length > 0 && (
                 <div className="mt-4">
+                  <h5 className="text-sm font-medium text-slate-700 mb-2">Uploaded Photos ({assetForm.photos.length})</h5>
                   <div className="flex flex-wrap gap-4">
                     {assetForm.photos.map((photo, index) => (
                       <div key={index} className="relative">

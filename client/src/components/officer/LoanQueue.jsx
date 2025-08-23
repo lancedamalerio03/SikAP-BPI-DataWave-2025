@@ -821,17 +821,59 @@ const LoanQueue = ({ onStatsUpdate }) => {
                     </div>
                     
                     <div className={`p-4 rounded-lg border-2 ${selectedLoan.assetsCompleted ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedLoan.assetsCompleted ? 'bg-green-100' : 'bg-red-100'}`}>
-                          {selectedLoan.assetsCompleted ? <CheckCircle className="w-5 h-5 text-green-600" /> : <XCircle className="w-5 h-5 text-red-600" />}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedLoan.assetsCompleted ? 'bg-green-100' : 'bg-red-100'}`}>
+                            {selectedLoan.assetsCompleted ? <CheckCircle className="w-5 h-5 text-green-600" /> : <XCircle className="w-5 h-5 text-red-600" />}
+                          </div>
+                          <div>
+                            <h5 className={`font-medium ${selectedLoan.assetsCompleted ? 'text-green-900' : 'text-red-900'}`}>Asset Declaration</h5>
+                            <p className={`text-sm ${selectedLoan.assetsCompleted ? 'text-green-700' : 'text-red-700'}`}>
+                              {selectedLoan.assetsCompleted ? 'Complete' : 'Incomplete'}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h5 className={`font-medium ${selectedLoan.assetsCompleted ? 'text-green-900' : 'text-red-900'}`}>Asset Declaration</h5>
-                          <p className={`text-sm ${selectedLoan.assetsCompleted ? 'text-green-700' : 'text-red-700'}`}>
-                            {selectedLoan.assetsCompleted ? 'Complete' : 'Incomplete'}
-                          </p>
-                        </div>
+                        {selectedLoan.borrowerDetails.assets?.summary?.totalValue && (
+                          <div className="text-right">
+                            <div className="text-sm text-slate-600">Total Value</div>
+                            <div className="text-lg font-semibold text-green-600">
+                              ₱{selectedLoan.borrowerDetails.assets.summary.totalValue.toLocaleString()}
+                            </div>
+                          </div>
+                        )}
                       </div>
+
+                      {selectedLoan.borrowerDetails.assets?.summary?.categoryBreakdown?.length > 0 && (
+                        <div className="mt-4">
+                          <div className="grid gap-3">
+                            {selectedLoan.borrowerDetails.assets.summary.categoryBreakdown.map((category, index) => (
+                              <div key={index} className="bg-white rounded-lg p-3 shadow-sm">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="font-medium text-slate-900">{category.category}</div>
+                                  <div className="text-sm text-slate-600">
+                                    {category.count} {category.count === 1 ? 'item' : 'items'}
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  {category.items.map((item, itemIndex) => (
+                                    <div key={itemIndex} className="text-sm">
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <span className="text-slate-900">{item.brand} {item.model}</span>
+                                          <span className="text-slate-600 ml-2">({item.condition})</span>
+                                        </div>
+                                        <div className="font-medium text-slate-900">
+                                          ₱{item.value.toLocaleString()}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

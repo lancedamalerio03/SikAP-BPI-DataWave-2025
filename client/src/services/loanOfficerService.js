@@ -234,7 +234,14 @@ export class LoanOfficerService {
           employment,
           address,
           riskProfile,
-          assets: assets.declared_assets || null,
+          assets: assets ? {
+            declaredAssets: assets.declared_assets || [],
+            summary: {
+              totalValue: parseFloat(assets.total_value) || 0,
+              totalAssets: assets.asset_count || 0,
+              categoryBreakdown: assets.category_summary || []
+            }
+          } : null,
           accountStatus: profile?.account_status || '',
           dateOfBirth: profile?.date_of_birth || '',
           gender: profile?.gender || '',
@@ -470,18 +477,51 @@ export class LoanOfficerService {
   }
 
   static determineCollateral(assets) {
-    if (!assets || !Array.isArray(assets) || assets.length === 0) {
+    if (!assets || !assets.summary || assets.summary.totalValue === 0) {
       return 'Clean loan - no collateral required';
     }
     
-    const totalValue = assets.reduce((sum, asset) => sum + (asset.estimated_value || 0), 0);
-    const mainAsset = assets[0];
+    const { totalValue, categoryBreakdown } = assets.summary;
     
-    if (totalValue > 0) {
-      return `${mainAsset.asset_type} - ${mainAsset.description} (₱${totalValue.toLocaleString()} estimated value)`;
+    // Find the highest value category
+    const mainCategory = categoryBreakdown.reduce((prev, curr) => 
+      curr.value > prev.value ? curr : prev
+    , { value: 0 });
+    
+    if (mainCategory && mainCategory.items && mainCategory.items.length > 0) {
+      const mainAsset = mainCategory.items[0]; // Get the first item in the highest value category
+      return `${mainCategory.category} - ${mainAsset.brand} ${mainAsset.model} (₱${totalValue.toLocaleString()} total value)`;
     }
     
-    return 'Assets declared - pending valuation';
+    return `Assets declared - ₱${totalValue.toLocaleString()} total value`;
+  }
+
+  /**
+   * Calculate the collateral value ratio for risk assessment
+   * @param {Object} assets - Asset declaration data
+   * @param {number} loanAmount - Requested loan amount
+   * @returns {number} Collateral to loan ratio
+   */
+  static calculateCollateralRatio(assets, loanAmount) {
+    if (!assets || !assets.summary || !loanAmount) return 0;
+    
+    const totalValue = assets.summary.totalValue;
+    return (totalValue / loanAmount) * 100;
+  }
+
+  /**
+   * Get the most valuable asset from the declaration
+   * @param {Object} assets - Asset declaration data
+   * @returns {Object|null} Most valuable asset details
+   */
+  static getMostValuableAsset(assets) {
+    if (!assets || !assets.declaredAssets || assets.declaredAssets.length === 0) {
+      return null;
+    }
+
+    return assets.declaredAssets.reduce((prev, curr) => 
+      curr.estimatedValue > prev.estimatedValue ? curr : prev
+    , assets.declaredAssets[0]);
   }
 
   static generateRiskFlags(riskProfile, employment, loan) {
