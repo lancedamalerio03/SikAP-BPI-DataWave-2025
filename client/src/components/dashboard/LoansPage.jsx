@@ -637,19 +637,19 @@ const LoansPage = () => {
                       <div className={`flex items-center gap-3 p-3 rounded-lg border ${
                         loan.requirements?.assetDeclaration 
                           ? 'border-green-200 bg-green-50' 
-                          : 'border-blue-200 bg-blue-50'
+                          : 'border-green-200 bg-green-50'
                       }`}>
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                           loan.requirements?.assetDeclaration 
                             ? 'bg-green-600 text-white' 
-                            : 'bg-blue-600 text-white'
+                            : 'bg-green-600 text-white'
                         }`}>
                           {loan.requirements?.assetDeclaration ? <CheckCircle size={16} /> : <Package size={16} />}
                         </div>
                         <div>
                           <div className="font-medium text-slate-900">Asset Declaration</div>
                           <div className="text-sm text-slate-600">
-                            {loan.requirements?.assetDeclaration ? 'Assets declared' : 'Pending Asset Declaration'}
+                            {loan.requirements?.assetDeclaration ? 'Assets declared' : 'Complete'}
                           </div>
                         </div>
                       </div>

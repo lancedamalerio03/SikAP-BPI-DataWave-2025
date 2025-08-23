@@ -121,11 +121,7 @@ const AssetDeclarationForm = () => {
     return assets.reduce((total, asset) => total + Number(asset.estimatedValue || 0), 0);
   };
 
-  // Calculate adjusted value based on condition
-  const calculateAdjustedValue = (value, condition) => {
-    const conditionInfo = conditionOptions.find(opt => opt.value === condition);
-    return conditionInfo ? Math.round(value * conditionInfo.multiplier) : value;
-  };
+
 
   // Handle form submission
   const handleSubmit = async () => {
@@ -157,7 +153,7 @@ const AssetDeclarationForm = () => {
           name: asset.name,
           category: asset.category,
           estimatedValue: Number(asset.estimatedValue),
-          adjustedValue: calculateAdjustedValue(asset.estimatedValue, asset.condition),
+
           condition: asset.condition,
           description: asset.description,
           photosCount: asset.photos?.length || 0,
@@ -166,9 +162,7 @@ const AssetDeclarationForm = () => {
         summary: {
           totalAssets: assets.length,
           totalValue: calculateTotalValue(),
-          totalAdjustedValue: assets.reduce((total, asset) => 
-            total + calculateAdjustedValue(asset.estimatedValue, asset.condition), 0
-          ),
+
           categoryBreakdown: assetCategories.map(category => ({
             category: category.value,
             count: assets.filter(asset => asset.category === category.value).length,
@@ -244,6 +238,20 @@ const AssetDeclarationForm = () => {
           </div>
         </div>
 
+        {/* Disclaimer Banner */}
+        <div className="mb-6 bg-amber-50 rounded-lg border border-amber-200 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-amber-600 mt-0.5" size={20} />
+            <div>
+              <h3 className="font-medium text-amber-900 mb-1">Important Notice</h3>
+              <p className="text-sm text-amber-700">
+                All asset values you provide are estimates and will be subject to evaluation and verification during the loan processing. 
+                Please provide your best estimate of the current market value.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Assets Summary */}
         {assets.length > 0 && (
           <div className="mb-6 bg-white rounded-lg border border-slate-200 shadow-sm p-6">
@@ -283,7 +291,7 @@ const AssetDeclarationForm = () => {
           {assets.map((asset) => {
             const categoryInfo = getCategoryInfo(asset.category);
             const conditionInfo = conditionOptions.find(opt => opt.value === asset.condition);
-            const adjustedValue = calculateAdjustedValue(asset.estimatedValue, asset.condition);
+
             
             return (
               <div key={asset.id} className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
@@ -304,7 +312,7 @@ const AssetDeclarationForm = () => {
                     </button>
                   </div>
 
-                  <div className="grid md:grid-cols-3 gap-4 mb-4">
+                  <div className="grid md:grid-cols-2 gap-4 mb-4">
                     <div>
                       <div className="text-sm text-slate-600">Estimated Value</div>
                       <div className="font-semibold text-slate-900">₱{Number(asset.estimatedValue).toLocaleString()}</div>
@@ -312,10 +320,6 @@ const AssetDeclarationForm = () => {
                     <div>
                       <div className="text-sm text-slate-600">Condition</div>
                       <div className="font-medium text-slate-900">{conditionInfo?.label}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-600">Adjusted Value</div>
-                      <div className="font-semibold text-green-600">₱{adjustedValue.toLocaleString()}</div>
                     </div>
                   </div>
 
@@ -443,11 +447,7 @@ const AssetDeclarationForm = () => {
                     </option>
                   ))}
                 </select>
-                {assetForm.condition && assetForm.estimatedValue && (
-                  <p className="text-xs text-green-600 mt-1">
-                    Adjusted value: ₱{calculateAdjustedValue(Number(assetForm.estimatedValue), assetForm.condition).toLocaleString()}
-                  </p>
-                )}
+
               </div>
             </div>
 
