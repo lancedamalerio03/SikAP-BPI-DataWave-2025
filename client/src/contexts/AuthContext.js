@@ -1,6 +1,7 @@
 // client/src/contexts/AuthContext.js
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import simpleCache, { CACHE_KEYS, CACHE_TTL } from '../utils/simpleCache'
 
 const AuthContext = createContext()
 
@@ -32,7 +33,7 @@ export const AuthProvider = ({ children }) => {
     console.log('🔍 AuthContext: Checking for initial session...')
     
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         console.error('Error getting session:', error)
         setLoading(false)
@@ -45,7 +46,8 @@ export const AuthProvider = ({ children }) => {
         console.log('AuthProvider: Found existing session', session.user.email)
         setUser(session.user)
         setIsAuthenticated(true)
-        fetchUserProfile(session.user.id)
+        // Wait for profile fetch to complete, just like in onAuthStateChange
+        await fetchUserProfile(session.user.id)
       }
       setLoading(false)
     })
@@ -70,13 +72,33 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserProfile = async (userId) => {
     try {
+      // Check cache first
+      const cacheKey = CACHE_KEYS.USER_PROFILE(userId);
+      const cachedProfile = simpleCache.get(cacheKey);
+      if (cachedProfile) {
+        console.log('📦 Using cached user profile');
+        setUser(prev => ({
+          ...prev,
+          profile: cachedProfile,
+          profileComplete: cachedProfile?.profile_complete || false
+        }));
+        return;
+      }
+
       console.log('AuthProvider: Fetching user profile for', userId)
       
-      const { data, error } = await supabase
+      // Add timeout to prevent hanging - only fetch essential fields
+      const profileQuery = supabase
         .from('users_profiles')
-        .select('*')
+        .select('id, email, first_name, last_name, profile_complete, created_at')
         .eq('id', userId)
         .single()
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+      )
+
+      const { data, error } = await Promise.race([profileQuery, timeoutPromise])
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -87,6 +109,10 @@ export const AuthProvider = ({ children }) => {
       }
       
       console.log('AuthProvider: Profile fetched successfully', data)
+      
+      // Cache the profile data
+      simpleCache.set(cacheKey, data, CACHE_TTL.USER_PROFILE);
+      
       setUser(prev => ({
         ...prev,
         profile: data,
@@ -94,6 +120,8 @@ export const AuthProvider = ({ children }) => {
       }))
     } catch (error) {
       console.error('AuthProvider: Error fetching user profile:', error)
+      // Don't throw the error - just log it and continue
+      // This prevents the auth flow from breaking if profile fetch fails
     }
   }
 

@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import webhookService from '../services/webhookService';
 import { 
   ArrowLeft, Plus, Camera, Trash2, Package, Car, Laptop, 
   Home, Gem, Music, Trophy, CheckCircle, X, Upload, Clock,
@@ -137,7 +139,18 @@ const AssetDeclarationForm = () => {
     setSubmitting(true);
 
     try {
-      const submissionData = {
+      // Get the current authenticated user
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        throw new Error('User authentication error: ' + userError.message);
+      }
+      
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+
+      const assetData = {
         applicationId,
         userId: applicationData?.userId,
         declaredAssets: assets.map(asset => ({
@@ -163,23 +176,15 @@ const AssetDeclarationForm = () => {
               .filter(asset => asset.category === category.value)
               .reduce((sum, asset) => sum + Number(asset.estimatedValue), 0)
           })).filter(cat => cat.count > 0)
-        },
-        submittedAt: new Date().toISOString(),
-        workflow_type: 'asset_declaration'
+        }
       };
 
-      // Submit to n8n webhook
-      const response = await fetch('https://sikap-2025.app.n8n.cloud/webhook/asset-declaration', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(submissionData)
-      });
+      console.log('Submitting asset declaration via webhook service...');
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      // Use the centralized webhook service
+      const result = await webhookService.submitAssetDeclaration(currentUser, assetData);
+      
+      console.log('Asset declaration webhook response:', result);
 
       // Redirect back to loans page with success message
       navigate('/dashboard/loans', {
@@ -191,7 +196,7 @@ const AssetDeclarationForm = () => {
 
     } catch (error) {
       console.error('Error submitting asset declaration:', error);
-      alert('Failed to submit asset declaration. Please try again.');
+      alert(`Failed to submit asset declaration: ${error.message}. Please try again.`);
     } finally {
       setSubmitting(false);
     }

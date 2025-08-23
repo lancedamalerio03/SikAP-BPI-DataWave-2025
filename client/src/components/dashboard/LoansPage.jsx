@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import simpleCache, { CACHE_KEYS, CACHE_TTL } from '../../utils/simpleCache';
 import { 
   Plus, RefreshCw, Search, Filter, Calendar, AlertTriangle, CheckCircle,
   Upload, Download, Eye, HelpCircle, CreditCard, Clock, FileText,
@@ -21,10 +22,10 @@ const LoansPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Load loans on component mount
+  // Load loans on component mount and when user becomes available
   useEffect(() => {
     loadUserLoans();
-  }, []);
+  }, [user?.id]); // Re-run when user.id becomes available
 
   // Handle success messages
   useEffect(() => {
@@ -67,6 +68,14 @@ const LoansPage = () => {
         return [];
       }
 
+      // Check cache first
+      const cacheKey = CACHE_KEYS.USER_LOANS(user.id);
+      const cachedData = simpleCache.get(cacheKey);
+      if (cachedData) {
+        console.log('📦 Using cached loan data');
+        return cachedData;
+      }
+
       // Import supabase dynamically to avoid errors
       const { supabase } = await import('../../lib/supabase');
       
@@ -77,11 +86,19 @@ const LoansPage = () => {
 
       console.log('Querying Supabase for user:', user.id);
 
-      const { data, error } = await supabase
+      // Add timeout to prevent hanging - only fetch essential fields
+      const queryPromise = supabase
         .from('preloan_applications')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(20); // Limit results for faster loading
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout')), 5000)
+      );
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
 
       if (error) {
         console.error('Supabase error:', error);
@@ -90,7 +107,7 @@ const LoansPage = () => {
 
       console.log('Supabase raw data:', data);
 
-      return (data || []).map(loan => ({
+      const mappedLoans = (data || []).map(loan => ({
         id: loan.id,
         title: getLoanTitle(loan.loan_purpose),
         principal: loan.loan_amount,
@@ -123,6 +140,11 @@ const LoansPage = () => {
         ],
         source: 'supabase'
       }));
+
+      // Cache the mapped data
+      simpleCache.set(cacheKey, mappedLoans, CACHE_TTL.USER_LOANS);
+      
+      return mappedLoans;
     } catch (error) {
       console.error('Error loading from Supabase:', error);
       return [];
@@ -194,6 +216,10 @@ const LoansPage = () => {
 
   const refreshLoans = async () => {
     setRefreshing(true);
+    // Clear cache to force fresh data
+    if (user?.id) {
+      simpleCache.delete(CACHE_KEYS.USER_LOANS(user.id));
+    }
     await loadUserLoans();
     setRefreshing(false);
   };
@@ -327,10 +353,55 @@ const LoansPage = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="text-center">
-          <Clock className="animate-spin mx-auto mb-4 text-red-600" size={48} />
-          <p className="text-slate-600">Loading your loans...</p>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">My Loans</h1>
+            <p className="text-slate-600">Manage your loan applications and active loans</p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <Button variant="outline" disabled>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+            <Button disabled>
+              <Plus className="w-4 h-4 mr-2" />
+              New Loan Application
+            </Button>
+          </div>
+        </div>
+
+        {/* Loading skeleton */}
+        <div className="space-y-6">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="overflow-hidden animate-pulse">
+              <div className="p-6 border-b border-slate-200">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="h-6 bg-slate-200 rounded w-48"></div>
+                      <div className="h-5 bg-slate-200 rounded w-20"></div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {[...Array(4)].map((_, j) => (
+                        <div key={j}>
+                          <div className="h-4 bg-slate-200 rounded w-20 mb-1"></div>
+                          <div className="h-5 bg-slate-200 rounded w-24"></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
+                <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+              </div>
+            </Card>
+          ))}
         </div>
       </div>
     );

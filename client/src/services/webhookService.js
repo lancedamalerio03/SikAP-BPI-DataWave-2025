@@ -11,7 +11,8 @@ const WEBHOOK_ENDPOINTS = {
   PRELOAN_APPLICATION: 'preloan-application',
   LOAN_APPLICATION: 'loan-application',
   DOCUMENT_UPLOAD: 'document-upload',
-  USER_REGISTRATION: 'user-registration'
+  USER_REGISTRATION: 'user-registration',
+  ASSET_DECLARATION: 'asset-declaration'
 }
 
 class WebhookService {
@@ -265,6 +266,26 @@ class WebhookService {
     }
 
     return this.sendToWebhook(WEBHOOK_ENDPOINTS.DOCUMENT_UPLOAD, payload)
+  }
+
+  /**
+   * Submit asset declaration
+   * @param {object} user - User data
+   * @param {object} assetData - Asset declaration data
+   * @returns {Promise} Asset declaration result
+   */
+  async submitAssetDeclaration(user, assetData) {
+    const applicationId = `ASD-${Date.now()}`
+    const payload = {
+      applicationId: applicationId,
+      submittedAt: new Date().toISOString(),
+      user: this.sanitizeUserData(user),
+      declaredAssets: assetData.declaredAssets,
+      summary: assetData.summary,
+      workflow_type: 'asset_declaration'
+    }
+
+    return this.sendToWebhook(WEBHOOK_ENDPOINTS.ASSET_DECLARATION, payload)
   }
 
   /**

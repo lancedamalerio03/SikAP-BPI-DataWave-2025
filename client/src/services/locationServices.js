@@ -1,20 +1,45 @@
 // client/src/components/services/locationService.js
 import { supabase } from '../lib/supabase'
+import simpleCache, { CACHE_KEYS, CACHE_TTL } from '../utils/simpleCache'
 
 
 export const locationService = {
   // Get all locations with their hours, services, and contacts
   async getAllLocations() {
     try {
+      // Check cache first
+      const cachedData = simpleCache.get(CACHE_KEYS.LOCATIONS);
+      if (cachedData) {
+        console.log('📦 Using cached location data');
+        return cachedData;
+      }
+
       console.log('🔍 Fetching locations...');
       
-      // Add timeout to the query
-      const { data: locations, error } = await Promise.race([
-        supabase.from('locations').select('*').limit(10),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Query timeout')), 10000)
-        )
-      ]);
+      // Add timeout to the query - only fetch essential fields
+      const queryPromise = supabase
+        .from('locations')
+        .select(`
+          id,
+          code,
+          name,
+          type,
+          status,
+          rating,
+          address,
+          latitude,
+          longitude,
+          phone,
+          busy_notes,
+          parking_notes,
+          updated_minutes_ago
+        `)
+        .limit(50); // Increase limit but still reasonable
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout')), 5000)
+      );
+      
+      const { data: locations, error } = await Promise.race([queryPromise, timeoutPromise]);
   
       if (error) {
         console.error('❌ Supabase error:', error);
@@ -25,7 +50,7 @@ export const locationService = {
       console.log('📊 Number of locations:', locations?.length || 0);
       
       // Simple transformation for now
-      return (locations || []).map(location => ({
+      const transformedLocations = (locations || []).map(location => ({
         id: location.id,
         code: location.code,
         name: location.name,
@@ -47,6 +72,11 @@ export const locationService = {
         services: ['Banking Services'],
         contacts: {}
       }));
+
+      // Cache the transformed data
+      simpleCache.set(CACHE_KEYS.LOCATIONS, transformedLocations, CACHE_TTL.LOCATIONS);
+      
+      return transformedLocations;
       
     } catch (error) {
       console.error('❌ Service error:', error);
