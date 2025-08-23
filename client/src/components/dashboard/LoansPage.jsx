@@ -19,22 +19,148 @@ const LoansPage = () => {
   const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [assetStatusRefreshing, setAssetStatusRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  // Debug function for console testing
+  const debugAssetStatus = async (applicationId) => {
+    if (!user?.id) {
+      console.log('No user ID available');
+      return;
+    }
+    
+    console.log('=== DEBUG ASSET STATUS ===');
+    const result = await checkAssetDeclarationStatus(applicationId, user.id);
+    console.log('Result:', result);
+    console.log('=========================');
+    return result;
+  };
+
+  // Make debug function available globally for testing
+  if (typeof window !== 'undefined') {
+    window.debugAssetStatus = debugAssetStatus;
+  }
+
   // Load loans on component mount and when user becomes available
   useEffect(() => {
+    // Clear cache on component mount to ensure fresh data
+    if (user?.id) {
+      console.log('Component mounted, clearing cache for fresh data...');
+      simpleCache.delete(CACHE_KEYS.USER_LOANS(user.id));
+    }
     loadUserLoans();
   }, [user?.id]); // Re-run when user.id becomes available
 
-  // Handle success messages
+  // Refresh asset declaration status for all loans
+  const refreshAssetDeclarationStatus = async () => {
+    if (!user?.id || loans.length === 0) return;
+
+    setAssetStatusRefreshing(true);
+    try {
+      console.log(`Refreshing asset declaration status for ${loans.length} loans`);
+      
+      // Clear cache to ensure fresh data
+      simpleCache.delete(CACHE_KEYS.USER_LOANS(user.id));
+      
+      const updatedLoans = await Promise.all(
+        loans.map(async (loan) => {
+          const assetResult = await checkAssetDeclarationStatus(loan.id, user.id);
+          
+          return {
+            ...loan,
+            requirements: {
+              ...loan.requirements,
+              assetDeclaration: assetResult.status
+            },
+            documents: loan.documents.map(doc => 
+              doc.name === 'Asset Declaration' 
+                ? { 
+                    ...doc, 
+                    status: assetResult.status ? 'Complete' : 'Optional',
+                    details: assetResult.details
+                  }
+                : doc
+            ),
+            // Store asset details for potential display
+            assetDeclarationDetails: assetResult.details
+          };
+        })
+      );
+
+      console.log('Asset declaration status refresh completed');
+      setLoans(updatedLoans);
+    } catch (error) {
+      console.error('Error refreshing asset declaration status:', error);
+    } finally {
+      setAssetStatusRefreshing(false);
+    }
+  };
+
+  // Auto-refresh asset status every 30 seconds
+  useEffect(() => {
+    if (loans.length > 0) {
+      const interval = setInterval(refreshAssetDeclarationStatus, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [loans.length, user?.id]);
+
+  // Refresh status when loans are loaded
+  useEffect(() => {
+    if (loans.length > 0 && user?.id) {
+      console.log('Loans loaded, refreshing asset declaration status...');
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        refreshAssetDeclarationStatus();
+      }, 100);
+    }
+  }, [loans.length, user?.id]);
+
+  // Handle success messages and refresh data when returning from asset declaration
   useEffect(() => {
     if (location.state?.message) {
+      // Check if the message indicates asset declaration was completed
+      if (location.state.message.includes('Asset declaration completed')) {
+        console.log('Asset declaration completed, clearing cache and refreshing data...');
+        
+        // Clear cache to force fresh data load
+        if (user?.id) {
+          // Clear the cache first
+          simpleCache.delete(CACHE_KEYS.USER_LOANS(user.id));
+          
+          // Immediately update the local state to reflect completion
+          console.log('Immediately updating local state to show asset declaration as complete...');
+          setLoans(prevLoans => 
+            prevLoans.map(loan => ({
+              ...loan,
+              requirements: {
+                ...loan.requirements,
+                assetDeclaration: true
+              },
+              documents: loan.documents.map(doc => 
+                doc.name === 'Asset Declaration' 
+                  ? { ...doc, status: 'Complete' }
+                  : doc
+              )
+            }))
+          );
+          
+          // Then force reload from database for accuracy
+          loadUserLoans().then(() => {
+            // After loans are loaded, refresh asset status specifically
+            setTimeout(() => {
+              console.log('Running secondary asset status refresh...');
+              refreshAssetDeclarationStatus();
+            }, 1000);
+          });
+        }
+      }
+      
       setTimeout(() => {
         window.history.replaceState({}, document.title);
       }, 5000);
     }
-  }, [location.state]);
+  }, [location.state, user?.id]);
 
   const loadUserLoans = async () => {
     setLoading(true);
@@ -72,7 +198,8 @@ const LoansPage = () => {
       const cacheKey = CACHE_KEYS.USER_LOANS(user.id);
       const cachedData = simpleCache.get(cacheKey);
       if (cachedData) {
-        console.log('📦 Using cached loan data');
+        console.log('📦 Using cached loan data, but will verify asset status...');
+        // Still return cached data but we'll refresh asset status separately
         return cachedData;
       }
 
@@ -86,11 +213,12 @@ const LoansPage = () => {
 
       console.log('Querying Supabase for user:', user.id);
 
-      // Add timeout to prevent hanging - only fetch essential fields
+      // Add timeout to prevent hanging - fetch all fields and order by latest updates
       const queryPromise = supabase
         .from('preloan_applications')
         .select('*')
         .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(20); // Limit results for faster loading
 
@@ -106,6 +234,13 @@ const LoansPage = () => {
       }
 
       console.log('Supabase raw data:', data);
+      
+      // Debug asset completion status
+      if (data && data.length > 0) {
+        data.forEach(loan => {
+          console.log(`Loan ${loan.id} assets_completed:`, loan.assets_completed);
+        });
+      }
 
       const mappedLoans = (data || []).map(loan => ({
         id: loan.id,
@@ -296,6 +431,84 @@ const LoansPage = () => {
     return pending;
   };
 
+  // Get completed requirements count
+  const getCompletedRequirementsCount = (loan) => {
+    let count = 0;
+    if (loan.requirements?.documents) count++;
+    if (loan.requirements?.esgCompliance) count++;
+    if (loan.requirements?.assetDeclaration) count++;
+    return count;
+  };
+
+  // Check asset declaration status from database with detailed information
+  const checkAssetDeclarationStatus = async (applicationId, userId) => {
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      
+      if (!supabase) {
+        console.log('Supabase not configured, falling back to stored status');
+        return { status: false, details: null };
+      }
+
+      console.log(`Checking asset declaration for application: ${applicationId}, user: ${userId}`);
+
+      // First, check the preloan_applications table for assets_completed flag
+      // Force a fresh query without any caching
+      const { data: loanData, error: loanError } = await supabase
+        .from('preloan_applications')
+        .select('assets_completed, updated_at, created_at')
+        .eq('id', applicationId)
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .single();
+
+      if (loanError && loanError.code !== 'PGRST116') { // PGRST116 = no rows found
+        console.error('Error checking loan assets status:', loanError);
+      }
+
+      // Then check the asset_declarations table for actual declarations
+      const { data: assetData, error: assetError } = await supabase
+        .from('assets_declarations')
+        .select('id, total_assets, total_value, created_at, declared_assets')
+        .eq('applicationId', applicationId)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (assetError && assetError.code !== 'PGRST116') {
+        console.error('Error checking asset declarations:', assetError);
+      }
+
+      // Determine status based on both sources
+      const hasAssetsCompleted = loanData?.assets_completed || false;
+      const hasAssetDeclarations = assetData && assetData.length > 0;
+      const isComplete = hasAssetsCompleted || hasAssetDeclarations;
+
+      const details = hasAssetDeclarations ? {
+        totalAssets: assetData[0].total_assets,
+        totalValue: assetData[0].total_value,
+        declaredAt: assetData[0].created_at,
+        source: 'asset_declarations'
+      } : hasAssetsCompleted ? {
+        declaredAt: loanData.assets_declared_at,
+        source: 'preloan_applications'
+      } : null;
+
+      console.log(`Asset declaration status for ${applicationId}: ${isComplete}`, {
+        hasAssetsCompleted,
+        hasAssetDeclarations,
+        loanData: loanData ? { assets_completed: loanData.assets_completed } : 'not found',
+        assetData: assetData ? `${assetData.length} records` : 'not found',
+        details
+      });
+
+      return { status: isComplete, details };
+    } catch (error) {
+      console.error('Error checking asset declaration status:', error);
+      return { status: false, details: null };
+    }
+  };
+
   // Generate action required message
   const getActionRequiredMessage = (loan) => {
     const pendingItems = getPendingRequirements(loan);
@@ -304,7 +517,7 @@ const LoansPage = () => {
       return "All requirements completed! Your application is being processed.";
     }
     
-    const pendingText = pendingItems.map(item => `Pending ${item}`).join(', ');
+    const pendingText = pendingItems.map(item => `${item}`).join(', ');
     return `Please complete: ${pendingText}`;
   };
 
@@ -586,97 +799,6 @@ const LoansPage = () => {
                   </div>
                 )}
 
-                {/* Requirements Status */}
-                {isPendingDocuments && (
-                  <div className="p-6 border-b border-slate-200">
-                    <h4 className="font-semibold text-slate-900 mb-4">Application Requirements</h4>
-                    <div className="grid md:grid-cols-3 gap-4">
-                      {/* Documents */}
-                      <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-                        loan.requirements?.documents 
-                          ? 'border-green-200 bg-green-50' 
-                          : 'border-red-200 bg-red-50'
-                      }`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          loan.requirements?.documents 
-                            ? 'bg-green-600 text-white' 
-                            : 'bg-red-600 text-white'
-                        }`}>
-                          {loan.requirements?.documents ? <CheckCircle size={16} /> : <FileText size={16} />}
-                        </div>
-                        <div>
-                          <div className="font-medium text-slate-900">Documents</div>
-                          <div className="text-sm text-slate-600">
-                            {loan.requirements?.documents ? 'Required docs uploaded' : 'Pending Documents'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* ESG Compliance */}
-                      <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-                        loan.requirements?.esgCompliance 
-                          ? 'border-green-200 bg-green-50' 
-                          : 'border-amber-200 bg-amber-50'
-                      }`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          loan.requirements?.esgCompliance 
-                            ? 'bg-green-600 text-white' 
-                            : 'bg-amber-600 text-white'
-                        }`}>
-                          {loan.requirements?.esgCompliance ? <CheckCircle size={16} /> : <Leaf size={16} />}
-                        </div>
-                        <div>
-                          <div className="font-medium text-slate-900">ESG Compliance</div>
-                          <div className="text-sm text-slate-600">
-                            {loan.requirements?.esgCompliance ? 'Form completed' : 'Pending ESG Compliance Form'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Asset Declaration */}
-                      <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-                        loan.requirements?.assetDeclaration 
-                          ? 'border-green-200 bg-green-50' 
-                          : 'border-green-200 bg-green-50'
-                      }`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          loan.requirements?.assetDeclaration 
-                            ? 'bg-green-600 text-white' 
-                            : 'bg-green-600 text-white'
-                        }`}>
-                          {loan.requirements?.assetDeclaration ? <CheckCircle size={16} /> : <Package size={16} />}
-                        </div>
-                        <div>
-                          <div className="font-medium text-slate-900">Asset Declaration</div>
-                          <div className="text-sm text-slate-600">
-                            {loan.requirements?.assetDeclaration ? 'Assets declared' : 'Complete'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                            
-                {/* Documents Section */}
-                <div className="p-6 border-b border-slate-200">
-                  <h4 className="font-semibold text-slate-900 mb-4">Documents</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {loan.documents.map((doc, index) => (
-                      <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                        <div className="flex-1">
-                          <div className="font-medium text-slate-900 text-sm">{doc.name}</div>
-                          {doc.date && (
-                            <div className="text-xs text-slate-600">{formatDate(doc.date)}</div>
-                          )}
-                        </div>
-                        <Badge className={getDocumentStatusColor(doc.status)} size="sm">
-                          {doc.status}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Action Buttons */}
                 <div className="p-6">
                   <div className="flex flex-wrap gap-3">
@@ -690,11 +812,11 @@ const LoansPage = () => {
                       </Button>
                     )}
                     
+                    {/* Primary Actions */}
                     {isPendingDocuments && !loan.requirements?.documents && (
                       <Button
                         onClick={() => handleUploadDocument(loan.id)}
-                        variant="outline"
-                        className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                        className="bg-red-600 hover:bg-red-700 text-white shadow-lg"
                       >
                         <Upload className="w-4 h-4 mr-2" />
                         Upload Documents
@@ -704,11 +826,10 @@ const LoansPage = () => {
                     {isPendingDocuments && !loan.requirements?.esgCompliance && (
                       <Button
                         onClick={() => handleESGCompliance(loan.id)}
-                        variant="outline"
-                        className="border-green-300 text-green-700 hover:bg-green-50"
+                        className="bg-amber-600 hover:bg-amber-700 text-white shadow-lg"
                       >
                         <Leaf className="w-4 h-4 mr-2" />
-                        Answer ESG Compliance Form
+                        Complete ESG Form
                       </Button>
                     )}
 
@@ -716,30 +837,14 @@ const LoansPage = () => {
                       <Button
                         onClick={() => handleAssetDeclaration(loan.id)}
                         variant="outline"
-                        className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                        className="border-blue-300 text-blue-700 hover:bg-blue-50 shadow-sm"
                       >
                         <Package className="w-4 h-4 mr-2" />
                         Declare Assets
                       </Button>
                     )}
                     
-                    <Button
-                      onClick={() => handleDownloadStatement(loan.id)}
-                      variant="outline"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download Statement
-                    </Button>
-                    
-                    <Button
-                      onClick={() => handleGetHelp(loan.id)}
-                      variant="outline"
-                      className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                    >
-                      <HelpCircle className="w-4 h-4 mr-2" />
-                      Get Help
-                    </Button>
-
+                    {/* Secondary Actions */}
                     <Button
                       onClick={() => handleViewDetails(loan.id)}
                       variant="outline"
@@ -748,8 +853,220 @@ const LoansPage = () => {
                       <Eye className="w-4 h-4 mr-2" />
                       View Details
                     </Button>
+                    
+                    <Button
+                      onClick={() => handleDownloadStatement(loan.id)}
+                      variant="outline"
+                      className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Statement
+                    </Button>
+                    
+                    <Button
+                      onClick={() => handleGetHelp(loan.id)}
+                      variant="outline"
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    >
+                      <HelpCircle className="w-4 h-4 mr-2" />
+                      Get Help
+                    </Button>
                   </div>
                 </div>
+
+
+                {/* Enhanced Requirements Checklist */}
+                {isPendingDocuments && (
+                  <div className="p-6 border-b border-slate-200">
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h4 className="font-semibold text-slate-900 text-lg">Application Requirements Checklist</h4>
+                        <p className="text-sm text-slate-600 mt-1">
+                          Complete all requirements to proceed with your application
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <div className="text-2xl font-bold text-slate-900">
+                            {getCompletedRequirementsCount(loan)}/3
+                          </div>
+                          <div className="text-xs text-slate-500">Completed</div>
+                        </div>
+                        <button
+                          onClick={refreshAssetDeclarationStatus}
+                          disabled={assetStatusRefreshing}
+                          className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                          title="Refresh status"
+                        >
+                          {assetStatusRefreshing ? (
+                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Requirements Checklist */}
+                    <div className="space-y-4">
+                      {/* Documents */}
+                      <div className={`flex items-start gap-4 p-4 rounded-xl border-2 transition-all duration-200 ${
+                        loan.requirements?.documents 
+                          ? 'border-green-200 bg-green-50' 
+                          : 'border-red-200 bg-red-50 hover:border-red-300'
+                      }`}>
+                        {/* Checkbox */}
+                        <div className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+                          loan.requirements?.documents 
+                            ? 'bg-green-600 border-green-600' 
+                            : 'bg-white border-red-300 hover:border-red-400'
+                        }`}>
+                          {loan.requirements?.documents && (
+                            <CheckCircle size={16} className="text-white" />
+                          )}
+                        </div>
+                        {/* Icon */}
+                        <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                          <FileText size={20} className="text-red-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h5 className={`font-semibold ${loan.requirements?.documents ? 'text-green-900' : 'text-slate-900'}`}>
+                              Required Documents
+                            </h5>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              loan.requirements?.documents ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {loan.requirements?.documents ? '✓ Complete' : 'Required'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-600 mt-1">
+                            {loan.requirements?.documents 
+                              ? 'All required documents have been uploaded and verified' 
+                              : 'Upload identity documents, proof of income, and other required files'
+                            }
+                          </p>
+                          {!loan.requirements?.documents && (
+                            <div className="mt-2">
+                              <span className="text-xs text-red-600 font-medium">⚠ Action needed</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ESG Compliance */}
+                      <div className={`flex items-start gap-4 p-4 rounded-xl border-2 transition-all duration-200 ${
+                        loan.requirements?.esgCompliance 
+                          ? 'border-green-200 bg-green-50' 
+                          : 'border-amber-200 bg-amber-50 hover:border-amber-300'
+                      }`}>
+                        {/* Checkbox */}
+                        <div className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+                          loan.requirements?.esgCompliance 
+                            ? 'bg-green-600 border-green-600' 
+                            : 'bg-white border-amber-300 hover:border-amber-400'
+                        }`}>
+                          {loan.requirements?.esgCompliance && (
+                            <CheckCircle size={16} className="text-white" />
+                          )}
+                        </div>
+                        {/* Icon */}
+                        <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                          <Leaf size={20} className="text-amber-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h5 className={`font-semibold ${loan.requirements?.esgCompliance ? 'text-green-900' : 'text-slate-900'}`}>
+                              ESG Compliance Form
+                            </h5>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              loan.requirements?.esgCompliance ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {loan.requirements?.esgCompliance ? '✓ Complete' : 'Required'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-600 mt-1">
+                            {loan.requirements?.esgCompliance 
+                              ? 'Environmental, Social, and Governance compliance form completed' 
+                              : 'Complete the ESG compliance assessment to meet sustainability requirements'
+                            }
+                          </p>
+                          {!loan.requirements?.esgCompliance && (
+                            <div className="mt-2">
+                              <span className="text-xs text-amber-600 font-medium">⚠ Action needed</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Asset Declaration */}
+                      <div className={`flex items-start gap-4 p-4 rounded-xl border-2 transition-all duration-200 ${
+                        loan.requirements?.assetDeclaration 
+                          ? 'border-green-200 bg-green-50' 
+                          : 'border-blue-200 bg-blue-50 hover:border-blue-300'
+                      }`}>
+                        {/* Checkbox */}
+                        <div className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+                          loan.requirements?.assetDeclaration 
+                            ? 'bg-green-600 border-green-600' 
+                            : 'bg-white border-blue-300 hover:border-blue-400'
+                        }`}>
+                          {loan.requirements?.assetDeclaration && (
+                            <CheckCircle size={16} className="text-white" />
+                          )}
+                        </div>
+                        {/* Icon */}
+                        <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <Package size={20} className="text-blue-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h5 className={`font-semibold ${loan.requirements?.assetDeclaration ? 'text-green-900' : 'text-slate-900'}`}>
+                              Asset Declaration
+                            </h5>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                              loan.requirements?.assetDeclaration ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {loan.requirements?.assetDeclaration ? '✓ Complete' : 'Optional'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-600 mt-1">
+                            {loan.requirements?.assetDeclaration 
+                              ? 'Assets have been declared and can be used as collateral' 
+                              : 'Declare assets to potentially improve loan terms and qualify for better rates'
+                            }
+                          </p>
+                          {loan.requirements?.assetDeclaration && loan.assetDeclarationDetails && (
+                            <div className="mt-2 p-2 bg-green-100 rounded-lg">
+                              <div className="text-xs text-green-800">
+                                {loan.assetDeclarationDetails.totalAssets && (
+                                  <span className="mr-3">📦 {loan.assetDeclarationDetails.totalAssets} assets</span>
+                                )}
+                                {loan.assetDeclarationDetails.totalValue && (
+                                  <span className="mr-3">💰 ₱{loan.assetDeclarationDetails.totalValue.toLocaleString()}</span>
+                                )}
+                                {loan.assetDeclarationDetails.declaredAt && (
+                                  <span>📅 {new Date(loan.assetDeclarationDetails.declaredAt).toLocaleDateString()}</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {!loan.requirements?.assetDeclaration && (
+                            <div className="mt-2">
+                              <span className="text-xs text-blue-600 font-medium">💡 Recommended</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                            
+                
+
+                
               </Card>
             );
           })}

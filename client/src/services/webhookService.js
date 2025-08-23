@@ -275,9 +275,8 @@ class WebhookService {
    * @returns {Promise} Asset declaration result
    */
   async submitAssetDeclaration(user, assetData) {
-    const applicationId = `ASD-${Date.now()}`
     const payload = {
-      applicationId: applicationId,
+      applicationId: assetData.applicationId,
       submittedAt: new Date().toISOString(),
       user: this.sanitizeUserData(user),
       declaredAssets: assetData.declaredAssets,

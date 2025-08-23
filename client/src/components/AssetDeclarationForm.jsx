@@ -1,6 +1,6 @@
 // client/src/components/AssetDeclarationForm.jsx - Separate Asset Declaration Form
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import webhookService from '../services/webhookService';
@@ -17,6 +17,40 @@ const AssetDeclarationForm = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [applicationData, setApplicationData] = useState(null);
+
+  // Load application data on component mount
+  useEffect(() => {
+    const loadApplicationData = async () => {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          console.error('User not authenticated:', userError);
+          return;
+        }
+
+        // Try to get application data from database
+        const { data, error } = await supabase
+          .from('preloan_applications')
+          .select('id, user_id, loan_amount, loan_purpose, assets_completed')
+          .eq('id', applicationId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Error loading application data:', error);
+        } else {
+          setApplicationData(data);
+          console.log('Loaded application data:', data);
+        }
+      } catch (error) {
+        console.error('Error in loadApplicationData:', error);
+      }
+    };
+
+    if (applicationId) {
+      loadApplicationData();
+    }
+  }, [applicationId]);
 
   const [assetForm, setAssetForm] = useState({
     name: '',
@@ -146,9 +180,14 @@ const AssetDeclarationForm = () => {
         throw new Error('User not authenticated');
       }
 
+      // Ensure we have application data
+      if (!applicationData && !applicationId) {
+        throw new Error('Application data not found. Please try again.');
+      }
+
       const assetData = {
         applicationId,
-        userId: applicationData?.userId,
+        userId: applicationData?.user_id || currentUser.id,
         declaredAssets: assets.map(asset => ({
           name: asset.name,
           category: asset.category,
@@ -173,17 +212,55 @@ const AssetDeclarationForm = () => {
         }
       };
 
-      console.log('Submitting asset declaration via webhook service...');
+      // Update preloan_applications table to mark assets as completed
+      const updatePreloanApplicationStatus = async () => {
+        try {
+          console.log('Updating preloan_applications assets_completed status...');
+          
+          const { error: updateError } = await supabase
+            .from('preloan_applications')
+            .update({
+              assets_completed: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', applicationId)
+            .eq('user_id', currentUser.id);
 
-      // Use the centralized webhook service
-      const result = await webhookService.submitAssetDeclaration(currentUser, assetData);
-      
-      console.log('Asset declaration webhook response:', result);
+          if (updateError) {
+            console.error('Error updating preloan_applications:', updateError);
+            throw new Error(`Database update failed: ${updateError.message}`);
+          } else {
+            console.log('Successfully updated preloan_applications assets_completed status');
+          }
+        } catch (dbError) {
+          console.error('Database update error:', dbError);
+          throw dbError;
+        }
+      };
+
+      if (assets.length > 0) {
+        // Submit assets via webhook service if assets are declared
+        console.log('Submitting asset declaration via webhook service...');
+        
+        const result = await webhookService.submitAssetDeclaration(currentUser, assetData);
+        console.log('Asset declaration webhook response:', result);
+        
+        // Update database status
+        await updatePreloanApplicationStatus();
+      } else {
+        // No assets declared, just update the completion status
+        console.log('No assets declared, updating completion status only...');
+        await updatePreloanApplicationStatus();
+      }
 
       // Redirect back to loans page with success message
+      const successMessage = assets.length > 0 
+        ? `Asset declaration completed! ${assets.length} assets declared with total value: ₱${calculateTotalValue().toLocaleString()}`
+        : 'Asset declaration completed! No assets declared at this time.';
+        
       navigate('/dashboard/loans', {
         state: {
-          message: `Asset declaration submitted! Total declared value: ₱${calculateTotalValue().toLocaleString()}`,
+          message: successMessage,
           type: 'success'
         }
       });
@@ -224,6 +301,22 @@ const AssetDeclarationForm = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Status Banner - if already completed */}
+        {applicationData?.assets_completed && (
+          <div className="mb-6 bg-green-50 rounded-lg border border-green-200 p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="text-green-600 mt-0.5" size={20} />
+              <div>
+                <h3 className="font-medium text-green-900 mb-1">Asset Declaration Already Completed</h3>
+                <p className="text-sm text-green-700">
+                  You have already completed the asset declaration for this application. 
+                  You can still update or add more assets if needed.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Info Banner */}
         <div className="mb-6 bg-blue-50 rounded-lg border border-blue-200 p-4">
           <div className="flex items-start gap-3">
