@@ -1,4 +1,4 @@
-// client/src/components/AssetDeclarationForm.jsx - Separate Asset Declaration Form
+// client/src/components/AssetDeclarationForm.jsx - Updated with webhook integration
 
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -7,20 +7,22 @@ import {
   Home, Gem, Music, Trophy, CheckCircle, X, Upload, Clock,
   DollarSign, AlertCircle, Eye, Edit
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import webhookService from '../services/webhookService';
 
 const AssetDeclarationForm = () => {
   const navigate = useNavigate();
   const { applicationId } = useParams();
-  const [assets, setAssets] = useState([]);
+  const [asset, setAsset] = useState(null); // Single asset instead of array
   const [showAddForm, setShowAddForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [applicationData, setApplicationData] = useState(null);
 
   const [assetForm, setAssetForm] = useState({
     name: '',
     category: '',
     estimatedValue: '',
     condition: '',
+    age: '', // Added age field
     description: '',
     photos: []
   });
@@ -38,12 +40,12 @@ const AssetDeclarationForm = () => {
     { value: 'other', label: 'Other Assets', icon: Package, examples: 'Art, collectibles, other valuables' }
   ];
 
-  // Condition options
+  // Condition options (removed multiplier since AI will handle valuation)
   const conditionOptions = [
-    { value: 'excellent', label: 'Excellent', description: 'Like new, minimal wear', multiplier: 1.0 },
-    { value: 'good', label: 'Good', description: 'Minor signs of use, fully functional', multiplier: 0.85 },
-    { value: 'fair', label: 'Fair', description: 'Noticeable wear but still functional', multiplier: 0.65 },
-    { value: 'poor', label: 'Poor', description: 'Significant wear, may need repairs', multiplier: 0.45 }
+    { value: 'excellent', label: 'Excellent', description: 'Like new, minimal wear' },
+    { value: 'good', label: 'Good', description: 'Minor signs of use, fully functional' },
+    { value: 'fair', label: 'Fair', description: 'Noticeable wear but still functional' },
+    { value: 'poor', label: 'Poor', description: 'Significant wear, may need repairs' }
   ];
 
   // Handle photo upload
@@ -78,7 +80,7 @@ const AssetDeclarationForm = () => {
     }));
   };
 
-  // Add asset
+  // Add asset (replace existing if any)
   const handleAddAsset = () => {
     if (!assetForm.name || !assetForm.category || !assetForm.estimatedValue || !assetForm.condition) {
       alert('Please fill in all required fields');
@@ -89,15 +91,17 @@ const AssetDeclarationForm = () => {
       id: Date.now(),
       ...assetForm,
       estimatedValue: Number(assetForm.estimatedValue),
+      age: Number(assetForm.age) || 0,
       addedAt: new Date().toISOString()
     };
 
-    setAssets(prev => [...prev, newAsset]);
+    setAsset(newAsset); // Set single asset instead of adding to array
     setAssetForm({
       name: '',
       category: '',
       estimatedValue: '',
       condition: '',
+      age: '',
       description: '',
       photos: []
     });
@@ -105,8 +109,8 @@ const AssetDeclarationForm = () => {
   };
 
   // Remove asset
-  const removeAsset = (assetId) => {
-    setAssets(prev => prev.filter(asset => asset.id !== assetId));
+  const removeAsset = () => {
+    setAsset(null); // Clear the single asset
   };
 
   // Get category info
@@ -114,278 +118,180 @@ const AssetDeclarationForm = () => {
     return assetCategories.find(cat => cat.value === categoryValue);
   };
 
-  // Calculate total value
+  // Calculate total value (single asset)
   const calculateTotalValue = () => {
-    return assets.reduce((total, asset) => total + Number(asset.estimatedValue || 0), 0);
+    return asset ? Number(asset.estimatedValue || 0) : 0;
   };
 
-  // Calculate adjusted value based on condition
-  const calculateAdjustedValue = (value, condition) => {
-    const conditionInfo = conditionOptions.find(opt => opt.value === condition);
-    return conditionInfo ? Math.round(value * conditionInfo.multiplier) : value;
-  };
 
-  // Handle form submission
+
+  // Handle form submission with webhook
   const handleSubmit = async () => {
-    if (assets.length === 0) {
-      const proceed = window.confirm(
-        'You haven\'t declared any assets. Assets can improve your loan terms and serve as collateral. Do you want to continue without declaring assets?'
-      );
-      if (!proceed) return;
-    }
-
-    setSubmitting(true);
-
     try {
-      const submissionData = {
-        applicationId,
-        userId: applicationData?.userId,
-        declaredAssets: assets.map(asset => ({
-          name: asset.name,
-          category: asset.category,
-          estimatedValue: Number(asset.estimatedValue),
-          adjustedValue: calculateAdjustedValue(asset.estimatedValue, asset.condition),
-          condition: asset.condition,
-          description: asset.description,
-          photosCount: asset.photos?.length || 0,
-          addedAt: asset.addedAt
-        })),
-        summary: {
-          totalAssets: assets.length,
-          totalValue: calculateTotalValue(),
-          totalAdjustedValue: assets.reduce((total, asset) => 
-            total + calculateAdjustedValue(asset.estimatedValue, asset.condition), 0
-          ),
-          categoryBreakdown: assetCategories.map(category => ({
-            category: category.value,
-            count: assets.filter(asset => asset.category === category.value).length,
-            value: assets
-              .filter(asset => asset.category === category.value)
-              .reduce((sum, asset) => sum + Number(asset.estimatedValue), 0)
-          })).filter(cat => cat.count > 0)
-        },
-        submittedAt: new Date().toISOString(),
-        workflow_type: 'asset_declaration'
-      };
+      setSubmitting(true);
 
-      // Submit to n8n webhook
-      const response = await fetch('https://sikap-2025.app.n8n.cloud/webhook/asset-declaration', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(submissionData)
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Get the current authenticated user
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        throw new Error('User authentication error: ' + userError.message);
+      }
+      
+      if (!currentUser) {
+        throw new Error('User not authenticated');
       }
 
-      // Redirect back to loans page with success message
-      navigate('/dashboard/loans', {
-        state: {
-          message: `Asset declaration submitted! Total declared value: ₱${calculateTotalValue().toLocaleString()}`,
-          type: 'success'
-        }
-      });
+      console.log('Submitting asset declaration via webhook...');
+
+      // Submit the single asset if it exists
+      if (asset) {
+        const assetData = {
+          application_id: applicationId,
+          asset_name: asset.name,
+          category: asset.category,
+          estimated_value: asset.estimatedValue,
+          condition: asset.condition,
+          age: asset.age || 0,
+          description: asset.description || ''
+        };
+
+        const webhookResult = await webhookService.submitAssetDeclaration(
+          applicationId,
+          assetData,
+          currentUser
+        );
+
+        console.log('Asset declaration webhook response:', webhookResult);
+
+        // Navigate back to loans page with success message
+        navigate('/dashboard/loans', {
+          state: {
+            message: `Asset declaration submitted successfully! Your ${asset.name} valued at ₱${asset.estimatedValue.toLocaleString()} has been processed by our AI for valuation.`,
+            type: 'success'
+          }
+        });
+      } else {
+        // User chose to continue without assets - still notify the system
+        const emptyAssetData = {
+          application_id: applicationId,
+          asset_name: 'No assets declared',
+          category: 'none',
+          estimated_value: 0,
+          condition: 'not_applicable',
+          age: 0,
+          description: 'Borrower chose to continue without declaring assets'
+        };
+
+        await webhookService.submitAssetDeclaration(
+          applicationId,
+          emptyAssetData,
+          currentUser
+        );
+
+        navigate('/dashboard/loans', {
+          state: {
+            message: 'Application continued without asset declaration. This may affect your loan terms.',
+            type: 'warning'
+          }
+        });
+      }
 
     } catch (error) {
       console.error('Error submitting asset declaration:', error);
-      alert('Failed to submit asset declaration. Please try again.');
+      alert(`Failed to submit asset declaration: ${error.message}. Please try again or contact support.`);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate(`/loans/${applicationId}/documents`)}
-              className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
-            >
-              <ArrowLeft size={20} />
-              Back to Application
-            </button>
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-slate-900">Asset Declaration</h1>
-              <p className="text-slate-600">Declare movable assets for improved loan terms</p>
-            </div>
-            <div className="text-right">
-              <div className="text-sm text-slate-600">Total Value</div>
-              <div className="text-2xl font-bold text-green-600">
-                ₱{calculateTotalValue().toLocaleString()}
-              </div>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-amber-50">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <button
+            onClick={() => navigate('/dashboard/loans')}
+            className="flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            <ArrowLeft size={20} />
+            Back to Loans
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Asset Declaration</h1>
+            <p className="text-slate-600">Declare your assets to improve loan terms and use as collateral</p>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        {/* Info Banner */}
-        <div className="mb-6 bg-blue-50 rounded-lg border border-blue-200 p-4">
-          <div className="flex items-start gap-3">
-            <Package className="text-blue-600 mt-0.5" size={20} />
+        {/* Summary Card */}
+        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 mb-6">
+          <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-medium text-blue-900 mb-1">Why Declare Assets?</h3>
-              <p className="text-sm text-blue-700">
-                Declaring assets can improve your loan terms, serve as collateral for Movable Asset Financing (MAF), 
-                and demonstrate your financial stability. All information is confidential and secure.
+              <h3 className="font-semibold text-slate-900 mb-1">Asset Summary</h3>
+              <p className="text-sm text-slate-600">
+                {!asset 
+                  ? 'No asset declared yet' 
+                  : `${asset.name} • Value: ₱${asset.estimatedValue.toLocaleString()}`
+                }
               </p>
             </div>
+            {!asset ? (
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <Plus size={20} />
+                Add Asset
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Edit size={20} />
+                Edit Asset
+              </button>
+            )}
           </div>
         </div>
-
-        {/* Assets Summary */}
-        {assets.length > 0 && (
-          <div className="mb-6 bg-white rounded-lg border border-slate-200 shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-900">Declared Assets Summary</h2>
-              <div className="flex items-center gap-4 text-sm text-slate-600">
-                <span>{assets.length} assets</span>
-                <span>₱{calculateTotalValue().toLocaleString()} total value</span>
-              </div>
-            </div>
-            
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {assetCategories.map(category => {
-                const categoryAssets = assets.filter(asset => asset.category === category.value);
-                const categoryValue = categoryAssets.reduce((sum, asset) => sum + Number(asset.estimatedValue), 0);
-                
-                if (categoryAssets.length === 0) return null;
-                
-                return (
-                  <div key={category.value} className="bg-slate-50 rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <category.icon size={16} className="text-slate-600" />
-                      <span className="font-medium text-slate-900">{category.label}</span>
-                    </div>
-                    <div className="text-sm text-slate-600">
-                      {categoryAssets.length} items • ₱{categoryValue.toLocaleString()}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Asset List */}
-        <div className="space-y-4 mb-6">
-          {assets.map((asset) => {
-            const categoryInfo = getCategoryInfo(asset.category);
-            const conditionInfo = conditionOptions.find(opt => opt.value === asset.condition);
-            const adjustedValue = calculateAdjustedValue(asset.estimatedValue, asset.condition);
-            
-            return (
-              <div key={asset.id} className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start gap-4">
-                      {categoryInfo && <categoryInfo.icon className="text-slate-600 mt-1" size={24} />}
-                      <div>
-                        <h3 className="font-semibold text-slate-900">{asset.name}</h3>
-                        <p className="text-sm text-slate-600">{categoryInfo?.label}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeAsset(asset.id)}
-                      className="text-red-600 hover:text-red-800 p-1"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-
-                  <div className="grid md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <div className="text-sm text-slate-600">Estimated Value</div>
-                      <div className="font-semibold text-slate-900">₱{Number(asset.estimatedValue).toLocaleString()}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-600">Condition</div>
-                      <div className="font-medium text-slate-900">{conditionInfo?.label}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-slate-600">Adjusted Value</div>
-                      <div className="font-semibold text-green-600">₱{adjustedValue.toLocaleString()}</div>
-                    </div>
-                  </div>
-
-                  {asset.description && (
-                    <div className="mb-4">
-                      <div className="text-sm text-slate-600 mb-1">Description</div>
-                      <p className="text-sm text-slate-700">{asset.description}</p>
-                    </div>
-                  )}
-
-                  {asset.photos && asset.photos.length > 0 && (
-                    <div>
-                      <div className="text-sm text-slate-600 mb-2">Photos ({asset.photos.length})</div>
-                      <div className="flex gap-2 overflow-x-auto">
-                        {asset.photos.map((photo, index) => (
-                          <img
-                            key={index}
-                            src={photo.url}
-                            alt={`${asset.name} photo ${index + 1}`}
-                            className="w-16 h-16 object-cover rounded border border-slate-200"
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Add Asset Button */}
-        {!showAddForm && (
-          <div className="mb-6">
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-lg"
-            >
-              <Plus size={20} />
-              Add Asset
-            </button>
-          </div>
-        )}
 
         {/* Add Asset Form */}
         {showAddForm && (
-          <div className="mb-6 bg-white rounded-lg border border-slate-200 shadow-sm p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-slate-900">Add New Asset</h3>
-              <button
-                onClick={() => setShowAddForm(false)}
-                className="text-slate-600 hover:text-slate-900 p-1"
-              >
-                <X size={20} />
-              </button>
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-900">
+                {asset ? 'Edit Asset' : 'Add Asset'}
+              </h3>
+              {asset && (
+                <button
+                  onClick={removeAsset}
+                  className="flex items-center gap-2 px-3 py-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                >
+                  <Trash2 size={16} />
+                  Remove Asset
+                </button>
+              )}
             </div>
-
+            
             <div className="grid md:grid-cols-2 gap-6">
+              {/* Asset Name */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Asset Name <span className="text-red-500">*</span>
+                  Asset Name *
                 </label>
                 <input
                   type="text"
                   name="name"
                   value={assetForm.name}
                   onChange={handleInputChange}
-                  placeholder="e.g., Toyota Vios 2020, MacBook Pro, etc."
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="e.g., 2019 Toyota Camry, MacBook Pro, etc."
                 />
               </div>
 
+              {/* Category */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Category <span className="text-red-500">*</span>
+                  Category *
                 </label>
                 <select
                   name="category"
@@ -393,116 +299,142 @@ const AssetDeclarationForm = () => {
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
                 >
-                  <option value="">Select a category</option>
-                  {assetCategories.map(category => (
+                  <option value="">Select category</option>
+                  {assetCategories.map((category) => (
                     <option key={category.value} value={category.value}>
                       {category.label}
                     </option>
                   ))}
                 </select>
-                {assetForm.category && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    Examples: {getCategoryInfo(assetForm.category)?.examples}
-                  </p>
-                )}
               </div>
 
+              {/* Estimated Value */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Estimated Value (₱) <span className="text-red-500">*</span>
+                  Estimated Value (₱) *
                 </label>
                 <input
                   type="number"
                   name="estimatedValue"
                   value={assetForm.estimatedValue}
                   onChange={handleInputChange}
-                  placeholder="Enter estimated market value"
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="Current market value"
                 />
               </div>
 
+              {/* Age */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Condition <span className="text-red-500">*</span>
+                  Age (years)
                 </label>
-                <select
-                  name="condition"
-                  value={assetForm.condition}
+                <input
+                  type="number"
+                  name="age"
+                  value={assetForm.age}
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                >
-                  <option value="">Select condition</option>
-                  {conditionOptions.map(condition => (
-                    <option key={condition.value} value={condition.value}>
-                      {condition.label} - {condition.description}
-                    </option>
-                  ))}
-                </select>
-                {assetForm.condition && assetForm.estimatedValue && (
-                  <p className="text-xs text-green-600 mt-1">
-                    Adjusted value: ₱{calculateAdjustedValue(Number(assetForm.estimatedValue), assetForm.condition).toLocaleString()}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Description (Optional)
-              </label>
-              <textarea
-                name="description"
-                value={assetForm.description}
-                onChange={handleInputChange}
-                rows={3}
-                placeholder="Additional details about the asset (model, year, specifications, etc.)"
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-              />
-            </div>
-
-            {/* Photo Upload */}
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Photos (Optional but recommended)
-              </label>
-              
-              <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={(e) => handlePhotoUpload(e.target.files)}
-                  className="hidden"
-                  id="photo-upload"
+                  placeholder="How old is this asset?"
                 />
-                <label htmlFor="photo-upload" className="cursor-pointer">
-                  <Camera className="mx-auto mb-4 text-slate-400" size={48} />
-                  <p className="text-slate-600 mb-2">Click to upload photos</p>
-                  <p className="text-xs text-slate-500">PNG, JPG up to 10MB each</p>
-                </label>
               </div>
 
-              {assetForm.photos.length > 0 && (
-                <div className="mt-4">
-                  <div className="flex flex-wrap gap-4">
-                    {assetForm.photos.map((photo, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={photo.url}
-                          alt={`Asset photo ${index + 1}`}
-                          className="w-24 h-24 object-cover rounded-lg border border-slate-200"
-                        />
-                        <button
-                          onClick={() => removePhoto(index)}
-                          className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+              {/* Condition */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Condition *
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {conditionOptions.map((option) => (
+                    <label
+                      key={option.value}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                        assetForm.condition === option.value
+                          ? 'border-red-500 bg-red-50 text-red-900'
+                          : 'border-slate-300 hover:border-red-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="condition"
+                        value={option.value}
+                        checked={assetForm.condition === option.value}
+                        onChange={handleInputChange}
+                        className="sr-only"
+                      />
+                      <div className="font-medium">{option.label}</div>
+                      <div className="text-xs text-slate-600 mt-1">{option.description}</div>
+                    </label>
+                  ))}
                 </div>
-              )}
+              </div>
+
+              {/* Description */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Description (Optional)
+                </label>
+                <textarea
+                  name="description"
+                  value={assetForm.description}
+                  onChange={handleInputChange}
+                  rows={3}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="Additional details about this asset..."
+                />
+              </div>
+
+              {/* Photo Upload */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Asset Photos (Optional)
+                </label>
+                <div className="space-y-4">
+                  {/* Upload Area */}
+                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-red-400 transition-colors">
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={(e) => handlePhotoUpload(e.target.files)}
+                      className="hidden"
+                      id="photo-upload"
+                    />
+                    <label htmlFor="photo-upload" className="cursor-pointer">
+                      <Upload className="mx-auto text-slate-400 mb-2" size={32} />
+                      <p className="text-sm text-slate-600">
+                        Click to upload photos or drag and drop
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        PNG, JPG up to 10MB each
+                      </p>
+                    </label>
+                  </div>
+
+                  {/* Photo Preview */}
+                  {assetForm.photos.length > 0 && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {assetForm.photos.map((photo, index) => (
+                        <div key={index} className="relative group">
+                          <img
+                            src={photo.url}
+                            alt={`Asset photo ${index + 1}`}
+                            className="w-full h-24 object-cover rounded-lg border border-slate-200"
+                          />
+                          <button
+                            onClick={() => removePhoto(index)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X size={12} />
+                          </button>
+                          <div className="mt-1 text-xs text-slate-500 truncate">
+                            {photo.name}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -516,8 +448,77 @@ const AssetDeclarationForm = () => {
                 onClick={handleAddAsset}
                 className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
-                Add Asset
+                {asset ? 'Update Asset' : 'Add Asset'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Asset Display */}
+        {asset && (
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden mb-6">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start gap-4">
+                  {(() => {
+                    const categoryInfo = getCategoryInfo(asset.category);
+                    const IconComponent = categoryInfo?.icon;
+                    return IconComponent && <IconComponent className="text-slate-600 mt-1" size={24} />;
+                  })()}
+                  <div>
+                    <h3 className="font-semibold text-slate-900">{asset.name}</h3>
+                    <p className="text-sm text-slate-600">{getCategoryInfo(asset.category)?.label}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={removeAsset}
+                  className="text-red-600 hover:text-red-800 p-1"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <div className="text-sm text-slate-600">Estimated Value</div>
+                  <div className="font-medium">₱{asset.estimatedValue.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-600">Condition</div>
+                  <div className="font-medium">{conditionOptions.find(opt => opt.value === asset.condition)?.label}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-600">Age</div>
+                  <div className="font-medium">{asset.age || 'N/A'} years</div>
+                </div>
+              </div>
+
+              {asset.description && (
+                <div className="border-t border-slate-100 pt-4 mb-4">
+                  <div className="text-sm text-slate-600 mb-1">Description</div>
+                  <p className="text-sm text-slate-800">{asset.description}</p>
+                </div>
+              )}
+
+              {asset.photos && asset.photos.length > 0 && (
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="text-sm text-slate-600 mb-2">Photos ({asset.photos.length})</div>
+                  <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                    {asset.photos.map((photo, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={photo.url}
+                          alt={`${asset.name} photo ${index + 1}`}
+                          className="w-full h-16 object-cover rounded border border-slate-200"
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded flex items-center justify-center">
+                          <Eye className="text-white opacity-0 group-hover:opacity-100 transition-opacity" size={16} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -527,12 +528,12 @@ const AssetDeclarationForm = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-slate-900 mb-1">
-                {assets.length > 0 ? 'Submit Asset Declaration' : 'No Assets to Declare'}
+                {asset ? 'Submit Asset Declaration' : 'No Asset to Declare'}
               </h3>
               <p className="text-sm text-slate-600">
-                {assets.length > 0 
-                  ? `${assets.length} assets declared with total value of ₱${calculateTotalValue().toLocaleString()}`
-                  : 'You can continue without declaring assets, but it may affect your loan terms'
+                {asset 
+                  ? `Asset declared: ${asset.name} valued at ₱${calculateTotalValue().toLocaleString()}`
+                  : 'You can continue without declaring an asset, but it may affect your loan terms'
                 }
               </p>
             </div>
@@ -554,7 +555,7 @@ const AssetDeclarationForm = () => {
               ) : (
                 <>
                   <CheckCircle size={20} />
-                  {assets.length > 0 ? 'Submit Declaration' : 'Continue Without Assets'}
+                  {asset ? 'Submit Declaration' : 'Continue Without Asset'}
                 </>
               )}
             </button>
@@ -570,7 +571,8 @@ const AssetDeclarationForm = () => {
               <ul className="text-sm text-amber-700 space-y-1">
                 <li>• Be honest about asset values - they may be verified during processing</li>
                 <li>• Include photos to speed up verification and improve credibility</li>
-                <li>• Assets in good condition have higher collateral value</li>
+                <li>• Assets in good condition provide better collateral value</li>
+                <li>• Our AI will assess actual market value based on your inputs</li>
                 <li>• Business equipment and vehicles typically have the highest loan impact</li>
               </ul>
             </div>
@@ -580,6 +582,5 @@ const AssetDeclarationForm = () => {
     </div>
   );
 };
-
 
 export default AssetDeclarationForm;

@@ -9,10 +9,8 @@ const WEBHOOK_TIMEOUT = parseInt(process.env.REACT_APP_WEBHOOK_TIMEOUT) || 30000
 // Configuration for different webhook endpoints
 const WEBHOOK_ENDPOINTS = {
   PRELOAN_APPLICATION: 'preloan-application',
-  LOAN_APPLICATION: 'loan-application',
-  DOCUMENT_UPLOAD: 'document-upload',
-  USER_REGISTRATION: 'user-registration',
-  ESG_ANALYSIS: 'esg-analysis'
+  ESG_ANALYSIS: 'esg-analysis',
+  ASSET_DECLARATION: 'asset-declaration'
 }
 
 class WebhookService {
@@ -234,6 +232,51 @@ class WebhookService {
   }
 
   /**
+   * Submit asset declaration data to n8n webhook
+   * @param {string} applicationId - The application ID
+   * @param {object} assetData - Asset declaration form data
+   * @param {object} user - User data from Supabase auth
+   * @returns {Promise} Asset declaration submission result
+   */
+  async submitAssetDeclaration(applicationId, assetData, user) {
+    const submissionId = `ASSET-${Date.now()}`
+    
+    // Sanitize the asset data
+    const sanitizedAssetData = {
+      asset_name: this.sanitizeString(assetData.asset_name),
+      category: this.sanitizeString(assetData.category),
+      estimated_value: this.sanitizeNumber(assetData.estimated_value),
+      condition: this.sanitizeString(assetData.condition),
+      age: this.sanitizeNumber(assetData.age),
+      description: this.sanitizeText(assetData.description)
+    }
+
+    const payload = {
+      submissionId,
+      applicationId,
+      submittedAt: new Date().toISOString(),
+      user: this.sanitizeUserData(user),
+      assetData: {
+        application_id: applicationId,
+        asset_name: sanitizedAssetData.asset_name,
+        category: sanitizedAssetData.category,
+        estimated_value: parseFloat(sanitizedAssetData.estimated_value) || 0,
+        condition: sanitizedAssetData.condition,
+        age: parseInt(sanitizedAssetData.age) || 0,
+        description: sanitizedAssetData.description || null,
+        status: 'submitted',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      workflow_type: 'asset_declaration'
+    }
+
+    console.log('Submitting asset declaration to webhook:', payload)
+    
+    return this.sendToWebhook(WEBHOOK_ENDPOINTS.ASSET_DECLARATION, payload)
+  }
+
+  /**
    * Sanitize loan data to prevent injection attacks
    */
   sanitizeLoanData(loanData) {
@@ -281,44 +324,6 @@ class WebhookService {
   sanitizeText(text) {
     if (!text || typeof text !== 'string') return null
     return text.trim().slice(0, 1000) // Limit to 1000 characters
-  }
-
-  /**
-   * Submit full loan application
-   * @param {object} user - User data
-   * @param {object} formData - Complete loan application form data
-   * @returns {Promise} Application submission result
-   */
-  async submitLoanApplication(user, formData) {
-    const applicationId = `LON-${Date.now()}`
-    
-    const payload = {
-      applicationId,
-      submittedAt: new Date().toISOString(),
-      user: this.sanitizeUserData(user),
-      applicationData: formData, // Consider adding sanitization here too
-      workflow_type: 'full_loan_application'
-    }
-
-    return this.sendToWebhook(WEBHOOK_ENDPOINTS.LOAN_APPLICATION, payload)
-  }
-
-  /**
-   * Submit document upload
-   * @param {object} user - User data
-   * @param {object} documentData - Document information
-   * @returns {Promise} Upload result
-   */
-  async submitDocumentUpload(user, documentData) {
-    const payload = {
-      uploadId: `DOC-${Date.now()}`,
-      submittedAt: new Date().toISOString(),
-      user: this.sanitizeUserData(user),
-      documentData,
-      workflow_type: 'document_upload'
-    }
-
-    return this.sendToWebhook(WEBHOOK_ENDPOINTS.DOCUMENT_UPLOAD, payload)
   }
 
   /**
