@@ -1,59 +1,65 @@
-// Updated LoansPage.jsx with multi-step requirements
+// client/src/components/dashboard/LoansPage.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Card } from '../ui/card';
 import { Button } from '../ui/button';
+import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { 
-  Plus, RefreshCw, Search, Filter, Calendar, AlertTriangle, CheckCircle,
-  Upload, Download, Eye, HelpCircle, CreditCard, Clock, FileText,
-  Leaf, Users, Shield, Package, MapPin, ArrowRight
+  Plus, 
+  Search, 
+  RefreshCw, 
+  FileText, 
+  Clock, 
+  CheckCircle, 
+  Upload, 
+  Leaf, 
+  Package, 
+  Download, 
+  HelpCircle, 
+  Eye,
+  CreditCard,
+  AlertTriangle
 } from 'lucide-react';
 
 const LoansPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  
   const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Load loans on component mount
   useEffect(() => {
     loadUserLoans();
-  }, []);
-
-  // Handle success messages
-  useEffect(() => {
-    if (location.state?.message) {
-      setTimeout(() => {
-        window.history.replaceState({}, document.title);
-      }, 5000);
-    }
-  }, [location.state]);
+  }, [user]);
 
   const loadUserLoans = async () => {
-    setLoading(true);
     try {
-      console.log('Loading user loans...');
-      const [supabaseLoans, localStorageLoans] = await Promise.all([
-        loadFromSupabase(),
-        loadFromLocalStorage()
-      ]);
-
-      console.log('Supabase loans:', supabaseLoans);
-      console.log('LocalStorage loans:', localStorageLoans);
-
+      setLoading(true);
+      
+      // Try loading from Supabase first
+      const supabaseLoans = await loadFromSupabase();
+      
+      // Fallback to localStorage if needed
+      const localStorageLoans = loadFromLocalStorage();
+      
+      // Combine and deduplicate
       const allLoans = [...supabaseLoans, ...localStorageLoans];
       const uniqueLoans = deduplicateLoans(allLoans);
       
-      console.log('Final loans after deduplication:', uniqueLoans);
+      console.log('Final loans list:', uniqueLoans);
       setLoans(uniqueLoans);
+      
     } catch (error) {
       console.error('Error loading loans:', error);
+      // Fallback to localStorage only
+      const localStorageLoans = loadFromLocalStorage();
+      setLoans(localStorageLoans);
     } finally {
       setLoading(false);
     }
@@ -61,17 +67,8 @@ const LoansPage = () => {
 
   const loadFromSupabase = async () => {
     try {
-      // Check if we have supabase and user
       if (!user?.id) {
-        console.log('No user ID available for Supabase query');
-        return [];
-      }
-
-      // Import supabase dynamically to avoid errors
-      const { supabase } = await import('../../lib/supabase');
-      
-      if (!supabase) {
-        console.log('Supabase not configured, skipping database load');
+        console.log('No user ID available for Supabase query - skipping database load');
         return [];
       }
 
@@ -284,7 +281,7 @@ const LoansPage = () => {
 
   // Event handlers
   const handleUploadDocument = (loanId) => {
-    navigate(`/loans/${loanId}/documents`); // Match existing route
+    navigate(`/loans/${loanId}/documents`);
   };
 
   const handleESGCompliance = (loanId) => {
@@ -296,21 +293,25 @@ const LoansPage = () => {
   };
 
   const handleDownloadStatement = (loanId) => {
-    // Implementation for downloading statement
     console.log('Downloading statement for loan:', loanId);
+    // Implementation for downloading statement would go here
+    alert('Statement download feature coming soon!');
   };
 
   const handleGetHelp = (loanId) => {
     navigate('/dashboard/chatbot', { state: { loanId } });
   };
 
+  // FIXED: Updated handleViewDetails function to navigate to the new loan offer details page
   const handleViewDetails = (loanId) => {
-    navigate(`/loans/${loanId}/documents`); // Match existing route
+    console.log('Viewing details for loan:', loanId);
+    navigate(`/dashboard/loans/${loanId}/details`);
   };
 
   const handleMakePayment = (loanId) => {
-    // Implementation for payment
     console.log('Making payment for loan:', loanId);
+    // Implementation for payment would go here
+    alert('Payment feature coming soon!');
   };
 
   const formatDate = (dateString) => {
@@ -417,157 +418,101 @@ const LoansPage = () => {
               : "No loans match your current filters."
             }
           </p>
-          <Button
-            onClick={() => navigate('/application')}
-            className="bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-700 hover:to-amber-600 text-white"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Apply for a Loan
-          </Button>
+          {loans.length === 0 && (
+            <Button
+              onClick={() => navigate('/application')}
+              className="bg-gradient-to-r from-red-600 to-amber-500 hover:opacity-90 text-white"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Apply for Your First Loan
+            </Button>
+          )}
         </Card>
       ) : (
-        <div className="space-y-6">
+        <div className="grid gap-6">
           {filteredLoans.map((loan) => {
-            const pendingRequirements = getPendingRequirements(loan);
-            const isPendingDocuments = loan.status === 'Pending Documents' || loan.status.toLowerCase() === 'pending_documents';
+            const isPendingDocuments = loan.status === 'Pending Documents';
+            const isApproved = loan.status === 'Approved';
+            const isActive = loan.status === 'Active';
             
             return (
               <Card key={loan.id} className="overflow-hidden">
-                {/* Loan Header */}
+                {/* Header */}
                 <div className="p-6 border-b border-slate-200">
-                  <div className="flex items-start justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-lg font-semibold text-slate-900">{loan.title}</h3>
-                        <Badge className={loan.statusColor} size="sm">
-                          {loan.status}
-                        </Badge>
+                        <Badge className={loan.statusColor}>{loan.status}</Badge>
                       </div>
                       
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                         <div>
-                          <div className="text-slate-600">Loan Amount</div>
-                          <div className="font-semibold text-slate-900">₱{loan.principal?.toLocaleString()}</div>
+                          <span className="text-slate-500">Amount:</span>
+                          <div className="font-medium">₱{loan.principal?.toLocaleString() || 0}</div>
                         </div>
                         <div>
-                          <div className="text-slate-600">Application ID</div>
-                          <div className="font-mono text-slate-900">{loan.id}</div>
+                          <span className="text-slate-500">Applied:</span>
+                          <div className="font-medium">{formatDate(loan.submittedAt)}</div>
                         </div>
                         <div>
-                          <div className="text-slate-600">Applied</div>
-                          <div className="text-slate-900">{formatDate(loan.submittedAt)}</div>
-                        </div>
-                        <div>
-                          <div className="text-slate-600">AI Decision</div>
-                          <div className={`font-medium ${
-                            loan.aiDecision === 'ACCEPT' ? 'text-green-600' : 
-                            loan.aiDecision === 'REJECT' ? 'text-red-600' : 'text-amber-600'
-                          }`}>
-                            {loan.aiDecision || 'Pending'} 
-                            {loan.aiConfidence && ` (${loan.aiConfidence}% confidence)`}
-                          </div>
+                          <span className="text-slate-500">Term:</span>
+                          <div className="font-medium">{loan.loanTenor || 12} months</div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* AI Assessment */}
-                {loan.aiReasoning && (
-                  <div className="p-6 border-b border-slate-200 bg-blue-50">
-                    <h4 className="font-medium text-blue-900 mb-2">AI Assessment</h4>
-                    <p className="text-sm text-blue-700 mb-3">{loan.aiReasoning}</p>
-                    <div className="flex items-start gap-4 text-sm">
-                      {loan.estimatedTime && (
-                        <p className="text-sm text-blue-600">
-                          <strong>Estimated processing time:</strong> {loan.estimatedTime}
-                        </p>
-                      )}
-                      {loan.nextSteps && loan.nextSteps.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-sm font-medium text-blue-900 mb-2">Next Steps:</p>
-                          <ul className="text-sm text-blue-700 space-y-1">
-                            {loan.nextSteps.map((step, index) => (
-                              <li key={index} className="flex items-start gap-2">
-                                <span className="w-1.5 h-1.5 bg-blue-600 rounded-full mt-2 flex-shrink-0"></span>
-                                {step}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
 
-                {/* Action Required Alert */}
+
+                {/* Requirements Section */}
                 {isPendingDocuments && (
-                  <div className="p-4 bg-amber-50 border-b border-slate-200">
-                    <div className="flex items-center gap-3">
-                      <AlertTriangle className="w-5 h-5 text-amber-600" />
-                      <div>
-                        <h4 className="font-medium text-amber-900">Action Required</h4>
-                        <p className="text-sm text-amber-700">
+                  <div className="p-6 border-b border-slate-200">
+                    <div className="flex items-start gap-3 mb-4">
+                      <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-slate-900 mb-1">Action Required</h4>
+                        <p className="text-sm text-slate-600 mb-4">
                           {getActionRequiredMessage(loan)}
                         </p>
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {/* Requirements Status */}
-                {isPendingDocuments && (
-                  <div className="p-6 border-b border-slate-200">
-                    <h4 className="font-semibold text-slate-900 mb-4">Application Requirements</h4>
-                    <div className="grid md:grid-cols-3 gap-4">
-                      {/* Documents */}
-                      <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-                        loan.requirements?.documents 
-                          ? 'border-green-200 bg-green-50' 
-                          : 'border-red-200 bg-red-50'
-                      }`}>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                           loan.requirements?.documents 
                             ? 'bg-green-600 text-white' 
                             : 'bg-red-600 text-white'
                         }`}>
-                          {loan.requirements?.documents ? <CheckCircle size={16} /> : <FileText size={16} />}
+                          {loan.requirements?.documents ? <CheckCircle size={16} /> : <Upload size={16} />}
                         </div>
                         <div>
                           <div className="font-medium text-slate-900">Documents</div>
                           <div className="text-sm text-slate-600">
-                            {loan.requirements?.documents ? 'Required docs uploaded' : 'Pending Documents'}
+                            {loan.requirements?.documents ? 'Documents uploaded' : 'Upload required documents'}
                           </div>
                         </div>
                       </div>
 
-                      {/* ESG Compliance */}
-                      <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-                        loan.requirements?.esgCompliance 
-                          ? 'border-green-200 bg-green-50' 
-                          : 'border-amber-200 bg-amber-50'
-                      }`}>
+                      <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                           loan.requirements?.esgCompliance 
                             ? 'bg-green-600 text-white' 
-                            : 'bg-amber-600 text-white'
+                            : 'bg-blue-600 text-white'
                         }`}>
                           {loan.requirements?.esgCompliance ? <CheckCircle size={16} /> : <Leaf size={16} />}
                         </div>
                         <div>
                           <div className="font-medium text-slate-900">ESG Compliance</div>
                           <div className="text-sm text-slate-600">
-                            {loan.requirements?.esgCompliance ? 'Form completed' : 'Pending ESG Compliance Form'}
+                            {loan.requirements?.esgCompliance ? 'ESG form completed' : 'Complete ESG assessment'}
                           </div>
                         </div>
                       </div>
 
-                      {/* Asset Declaration */}
-                      <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-                        loan.requirements?.assetDeclaration 
-                          ? 'border-green-200 bg-green-50' 
-                          : 'border-blue-200 bg-blue-50'
-                      }`}>
+                      <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                           loan.requirements?.assetDeclaration 
                             ? 'bg-green-600 text-white' 
@@ -609,7 +554,7 @@ const LoansPage = () => {
                 {/* Action Buttons */}
                 <div className="p-6">
                   <div className="flex flex-wrap gap-3">
-                    {loan.status === 'Active' && loan.outstanding > 0 && (
+                    {isActive && loan.outstanding > 0 && (
                       <Button
                         onClick={() => handleMakePayment(loan.id)}
                         className="bg-gradient-to-r from-red-600 to-amber-500 hover:opacity-90"
@@ -637,7 +582,7 @@ const LoansPage = () => {
                         className="border-green-300 text-green-700 hover:bg-green-50"
                       >
                         <Leaf className="w-4 h-4 mr-2" />
-                        Answer ESG Compliance Form
+                        Complete ESG Form
                       </Button>
                     )}
 
