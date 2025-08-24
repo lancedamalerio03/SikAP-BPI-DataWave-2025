@@ -1,7 +1,8 @@
 // client/src/components/dashboard/HomePage.jsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -17,16 +18,30 @@ import {
   Upload,
   MapPin,
   MessageCircle,
-  Eye,
   Calendar,
-  DollarSign
+  DollarSign,
+  Clock,
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  
+  // State for dynamic data
+  const [loading, setLoading] = useState(true);
+  const [recentApplications, setRecentApplications] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [upcomingPayments, setUpcomingPayments] = useState([]);
+  const [userStats, setUserStats] = useState({
+    totalApplications: 0,
+    activeLoans: 0,
+    completedPayments: 0,
+    totalBorrowed: 0
+  });
 
-  // Quick action cards
+  // Quick action cards (keeping these static as they're navigation items)
   const quickActions = [
     {
       icon: PlusCircle,
@@ -62,122 +77,300 @@ const HomePage = () => {
       description: 'Get financial advice',
       color: 'bg-purple-600',
       onClick: () => navigate('/dashboard/chatbot')
-    },
-    {
-      icon: Eye,
-      title: 'Check Credit Score',
-      description: 'View your AI credit score',
-      color: 'bg-indigo-600',
-      onClick: () => navigate('/dashboard/portfolio')
     }
   ];
 
-  // Payment reminders and messages
-  const messages = [
-    {
-      id: 1,
-      type: 'payment',
-      icon: Bell,
-      title: 'Payment Due Soon',
-      description: 'Your equipment loan payment of ₱2,500 is due on March 15, 2025',
-      urgent: true,
-      action: 'Pay Now',
-      actionColor: 'bg-red-600'
-    },
-    {
-      id: 2,
-      type: 'document',
-      icon: FileText,
-      title: 'Document Required',
-      description: 'Please upload your latest bank statement for loan #LN-2024-012',
-      urgent: false,
-      action: 'Upload',
-      actionColor: 'bg-blue-600'
-    },
-    {
-      id: 3,
-      type: 'approval',
-      icon: CheckCircle,
-      title: 'Loan Approved!',
-      description: 'Congratulations! Your business expansion loan has been approved.',
-      urgent: false,
-      action: 'View Details',
-      actionColor: 'bg-green-600'
-    },
-    {
-      id: 4,
-      type: 'reminder',
-      icon: AlertTriangle,
-      title: 'Profile Incomplete',
-      description: 'Complete your profile to increase your credit score by up to 50 points',
-      urgent: false,
-      action: 'Complete',
-      actionColor: 'bg-amber-600'
+  // Fetch user data on component mount
+  useEffect(() => {
+    if (user?.id) {
+      loadUserData();
     }
-  ];
+  }, [user?.id]);
 
-  // Recent loan applications
-  const recentApplications = [
-    {
-      id: 'APP-2025-001',
-      title: 'Business Expansion Loan',
-      amount: '₱50,000',
-      date: '2 days ago',
-      status: 'Under Review',
-      statusColor: 'bg-blue-100 text-blue-800'
-    },
-    {
-      id: 'LN-2024-012',
-      title: 'Equipment Purchase',
-      amount: '₱25,000',
-      date: '1 week ago',
-      status: 'Active',
-      statusColor: 'bg-green-100 text-green-800'
-    },
-    {
-      id: 'LN-2024-008',
-      title: 'Working Capital',
-      amount: '₱15,000',
-      date: '2 weeks ago',
-      status: 'Pending Documents',
-      statusColor: 'bg-amber-100 text-amber-800'
+  const loadUserData = async () => {
+    try {
+      setLoading(true);
+      
+      // Load data in parallel
+      await Promise.all([
+        loadRecentApplications(),
+        loadUserStats(),
+        generateNotifications(),
+        loadUpcomingPayments()
+      ]);
+      
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    } finally {
+      setLoading(false);
     }
-  ];
-
-  // Payment status overview
-  const paymentOverview = {
-    nextPayment: {
-      amount: '₱2,500',
-      dueDate: 'March 15, 2025',
-      loanName: 'Equipment Loan'
-    },
-    monthlyTotal: '₱3,700',
-    onTimeRate: '100%',
-    overdueAmount: '₱0'
   };
+
+  const loadRecentApplications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('preloan_applications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      if (error) throw error;
+
+      setRecentApplications(data || []);
+    } catch (error) {
+      console.error('Error loading applications:', error);
+      setRecentApplications([]);
+    }
+  };
+
+  const loadUserStats = async () => {
+    try {
+      // Get application count
+      const { data: applications, error: appError } = await supabase
+        .from('preloan_applications')
+        .select('id, loan_amount, status')
+        .eq('user_id', user.id);
+
+      if (appError) throw appError;
+
+      const totalApplications = applications?.length || 0;
+      const activeLoans = applications?.filter(app => app.status === 'approved').length || 0;
+      const totalBorrowed = applications
+        ?.filter(app => app.status === 'approved')
+        ?.reduce((sum, app) => sum + (parseFloat(app.loan_amount) || 0), 0) || 0;
+
+      setUserStats({
+        totalApplications,
+        activeLoans,
+        completedPayments: 0, // This would come from a payments table
+        totalBorrowed
+      });
+
+    } catch (error) {
+      console.error('Error loading user stats:', error);
+    }
+  };
+
+  const generateNotifications = async () => {
+    try {
+      const { data: applications, error } = await supabase
+        .from('preloan_applications')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      const notifications = [];
+
+      // Generate notifications based on application status
+      applications?.forEach(app => {
+        // Payment due notifications (simulated - would be real from payments table)
+        if (app.status === 'approved') {
+          notifications.push({
+            id: `payment-${app.id}`,
+            type: 'payment',
+            icon: Bell,
+            title: 'Payment Due Soon',
+            description: `Your ${getLoanTitle(app.loan_purpose).toLowerCase()} payment is due soon`,
+            urgent: true,
+            action: 'Pay Now',
+            actionColor: 'bg-red-600',
+            actionClick: () => navigate('/dashboard/loans')
+          });
+        }
+
+        // Document requirements
+        if (!app.documents_completed) {
+          notifications.push({
+            id: `docs-${app.id}`,
+            type: 'document',
+            icon: FileText,
+            title: 'Document Required',
+            description: `Please upload required documents for ${getLoanTitle(app.loan_purpose)}`,
+            urgent: false,
+            action: 'Upload',
+            actionColor: 'bg-blue-600',
+            actionClick: () => navigate('/dashboard/loans')
+          });
+        }
+
+        // ESG compliance
+        if (!app.esg_completed) {
+          notifications.push({
+            id: `esg-${app.id}`,
+            type: 'document',
+            icon: FileText,
+            title: 'ESG Assessment Pending',
+            description: `Complete your ESG assessment for ${getLoanTitle(app.loan_purpose)}`,
+            urgent: false,
+            action: 'Complete',
+            actionColor: 'bg-green-600',
+            actionClick: () => navigate('/dashboard/loans')
+          });
+        }
+
+        // Approval notifications
+        if (app.status === 'approved' && app.ai_decision) {
+          notifications.push({
+            id: `approved-${app.id}`,
+            type: 'approval',
+            icon: CheckCircle,
+            title: 'Loan Approved!',
+            description: `Congratulations! Your ${getLoanTitle(app.loan_purpose).toLowerCase()} has been approved.`,
+            urgent: false,
+            action: 'View Details',
+            actionColor: 'bg-green-600',
+            actionClick: () => navigate('/dashboard/loans')
+          });
+        }
+
+        // Profile completion reminder
+        if (!user.profileComplete) {
+          notifications.push({
+            id: 'profile-incomplete',
+            type: 'profile',
+            icon: AlertTriangle,
+            title: 'Profile Incomplete',
+            description: 'Complete your profile to improve your credit score by up to 50 points',
+            urgent: false,
+            action: 'Complete',
+            actionColor: 'bg-amber-600',
+            actionClick: () => navigate('/dashboard/profile')
+          });
+        }
+      });
+
+      // Limit to most recent/important notifications
+      setNotifications(notifications.slice(0, 4));
+
+    } catch (error) {
+      console.error('Error generating notifications:', error);
+      setNotifications([]);
+    }
+  };
+
+  const loadUpcomingPayments = async () => {
+    // This would typically come from a payments or schedules table
+    // For now, simulate based on approved loans
+    try {
+      const { data: approvedLoans, error } = await supabase
+        .from('preloan_applications')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'approved');
+
+      if (error) throw error;
+
+      const payments = approvedLoans?.map(loan => ({
+        id: loan.id,
+        amount: calculateMonthlyPayment(loan.loan_amount, loan.loan_tenor_months),
+        loanType: getLoanTitle(loan.loan_purpose),
+        dueDate: getNextPaymentDate(loan.created_at, loan.repayment_frequency),
+        status: 'upcoming'
+      })) || [];
+
+      setUpcomingPayments(payments.slice(0, 1)); // Show only next payment
+
+    } catch (error) {
+      console.error('Error loading payments:', error);
+      setUpcomingPayments([]);
+    }
+  };
+
+  // Helper functions
+  const getLoanTitle = (purpose) => {
+    const titles = {
+      'working_capital': 'Working Capital Loan',
+      'business_expansion': 'Business Expansion Loan',
+      'purchase_equipment_vehicle': 'Equipment Purchase Loan',
+      'purchase_inventory': 'Inventory Financing',
+      'emergency_expenses': 'Emergency Loan',
+      'home_improvement': 'Home Improvement Loan',
+      'education': 'Education Loan',
+      'medical_expenses': 'Medical Loan',
+      'debt_consolidation': 'Debt Consolidation',
+      'others': 'Personal Loan'
+    };
+    return titles[purpose] || 'Loan Application';
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      'pending': 'bg-amber-100 text-amber-800',
+      'under_review': 'bg-blue-100 text-blue-800',
+      'approved': 'bg-green-100 text-green-800',
+      'rejected': 'bg-red-100 text-red-800',
+      'completed': 'bg-slate-100 text-slate-800'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const calculateMonthlyPayment = (principal, months) => {
+    // Simple calculation - in real app would include interest rates
+    const rate = 0.10 / 12; // 10% annual rate
+    const payment = principal * (rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
+    return Math.round(payment);
+  };
+
+  const getNextPaymentDate = (startDate, frequency) => {
+    const start = new Date(startDate);
+    const next = new Date(start);
+    
+    if (frequency === 'monthly') {
+      next.setMonth(next.getMonth() + 1);
+    } else if (frequency === 'weekly') {
+      next.setDate(next.getDate() + 7);
+    }
+    
+    return next.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 0
+    }).format(amount);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+        <span className="ml-2 text-slate-600">Loading your dashboard...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="bg-gradient-to-r from-red-600 to-amber-500 rounded-xl p-6 text-white">
-        <h1 className="text-2xl font-bold mb-2">Welcome back, {user?.firstName}!</h1>
-        <p className="opacity-90">Here's what's happening with your financial journey today.</p>
+      {/* Welcome Banner */}
+      <div className="bg-gradient-to-r from-red-600 to-amber-500 rounded-lg p-6 text-white">
+        <h1 className="text-2xl font-bold">Welcome back, {user?.profile?.first_name || 'User'}!</h1>
+        <p className="opacity-90 mt-1">
+          Here's what's happening with your financial journey today.
+        </p>
       </div>
 
-      {/* Quick Actions Grid */}
+      {/* Quick Actions */}
       <div>
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <h2 className="text-lg font-semibold text-slate-900 mb-4">Quick Actions</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {quickActions.map((action, index) => {
             const Icon = action.icon;
             return (
               <div
                 key={index}
+                className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow cursor-pointer group"
                 onClick={action.onClick}
-                className="group cursor-pointer"
               >
-                <div className="text-center p-4 bg-white rounded-lg border-2 border-transparent hover:border-red-200 hover:shadow-md transition-all">
-                  <div className={`w-12 h-12 ${action.color} rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform`}>
+                <div className="text-center">
+                  <div className={`w-12 h-12 ${action.color} rounded-lg mx-auto mb-3 flex items-center justify-center group-hover:scale-105 transition-transform`}>
                     <Icon className="w-6 h-6 text-white" />
                   </div>
                   <h3 className="font-medium text-slate-900 text-sm mb-1">{action.title}</h3>
@@ -193,154 +386,180 @@ const HomePage = () => {
         {/* Left Column - Messages and Applications */}
         <div className="lg:col-span-2 space-y-6">
           {/* Messages and Updates */}
-          <Card>
-            <div className="p-4 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Messages & Updates</h3>
-              <p className="text-sm text-slate-600">Important notifications and reminders</p>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {messages.map((message) => {
-                const Icon = message.icon;
-                return (
-                  <div key={message.id} className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        message.type === 'payment' ? 'bg-red-100' :
-                        message.type === 'document' ? 'bg-blue-100' :
-                        message.type === 'approval' ? 'bg-green-100' :
-                        'bg-amber-100'
-                      }`}>
-                        <Icon className={`w-5 h-5 ${
-                          message.type === 'payment' ? 'text-red-600' :
-                          message.type === 'document' ? 'text-blue-600' :
-                          message.type === 'approval' ? 'text-green-600' :
-                          'text-amber-600'
-                        }`} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="font-medium text-slate-900">{message.title}</h4>
-                            <p className="text-sm text-slate-600 mt-1">{message.description}</p>
+          {notifications.length > 0 && (
+            <Card>
+              <div className="p-4 border-b border-slate-200">
+                <h3 className="text-lg font-semibold text-slate-900">Messages & Updates</h3>
+                <p className="text-sm text-slate-600">Important notifications and reminders</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {notifications.map((notification) => {
+                  const Icon = notification.icon;
+                  return (
+                    <div key={notification.id} className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-lg ${
+                          notification.type === 'payment' ? 'bg-red-100' :
+                          notification.type === 'document' ? 'bg-blue-100' :
+                          notification.type === 'approval' ? 'bg-green-100' :
+                          'bg-amber-100'
+                        }`}>
+                          <Icon className={`w-5 h-5 ${
+                            notification.type === 'payment' ? 'text-red-600' :
+                            notification.type === 'document' ? 'text-blue-600' :
+                            notification.type === 'approval' ? 'text-green-600' :
+                            'text-amber-600'
+                          }`} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <h4 className="font-medium text-slate-900">{notification.title}</h4>
+                              <p className="text-sm text-slate-600 mt-1">{notification.description}</p>
+                            </div>
+                            {notification.urgent && (
+                              <Badge variant="destructive" className="ml-2">Urgent</Badge>
+                            )}
                           </div>
-                          <Button
-                            size="sm"
-                            className={`${message.actionColor} hover:opacity-90 text-white`}
-                          >
-                            {message.action}
-                          </Button>
+                          <div className="flex items-center gap-2 mt-3">
+                            <Button
+                              size="sm"
+                              className={notification.actionColor}
+                              onClick={notification.actionClick}
+                            >
+                              {notification.action}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
 
           {/* Recent Applications */}
           <Card>
             <div className="p-4 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Recent Applications</h3>
-              <p className="text-sm text-slate-600">Track your loan application progress</p>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Recent Applications</h3>
+                  <p className="text-sm text-slate-600">Track your loan application progress</p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => navigate('/dashboard/loans')}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  View All
+                </Button>
+              </div>
             </div>
             <div className="divide-y divide-slate-100">
-              {recentApplications.map((app) => (
-                <div key={app.id} className="p-4 flex justify-between items-center">
-                  <div>
-                    <h4 className="font-medium text-slate-900">{app.title}</h4>
-                    <p className="text-sm text-slate-600">{app.amount} • Applied {app.date}</p>
-                    <p className="text-xs text-slate-500">ID: {app.id}</p>
+              {recentApplications.length > 0 ? recentApplications.map((application) => (
+                <div key={application.id} className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h4 className="font-medium text-slate-900">
+                        {getLoanTitle(application.loan_purpose)}
+                      </h4>
+                      <p className="text-sm text-slate-600">
+                        {formatCurrency(application.loan_amount)} • 
+                        Applied {new Date(application.created_at).toLocaleDateString()}
+                      </p>
+                      <p className="text-sm text-slate-600">
+                        ID: {application.id}
+                      </p>
+                    </div>
+                    <Badge className={getStatusColor(application.status)}>
+                      {application.status?.replace('_', ' ')?.toUpperCase()}
+                    </Badge>
                   </div>
-                  <Badge className={app.statusColor}>
-                    {app.status}
-                  </Badge>
+                  
+                  {application.ai_decision && (
+                    <div className="bg-slate-50 rounded p-3 mt-2">
+                      <p className="text-sm font-medium">AI Assessment: {application.ai_decision}</p>
+                      {application.ai_confidence && (
+                        <p className="text-xs text-slate-600">
+                          Confidence: {Math.round(application.ai_confidence * 100)}%
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-            <div className="p-4 border-t border-slate-100">
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={() => navigate('/dashboard/loans')}
-              >
-                View All Applications
-              </Button>
+              )) : (
+                <div className="p-8 text-center">
+                  <FileText className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                  <p className="text-slate-600">No applications yet</p>
+                  <Button 
+                    className="mt-3"
+                    onClick={() => navigate('/application')}
+                  >
+                    Apply for Your First Loan
+                  </Button>
+                </div>
+              )}
             </div>
           </Card>
         </div>
 
-        {/* Right Column - Payment Status */}
+        {/* Right Column - Payments and Summary */}
         <div className="space-y-6">
           {/* Next Payment */}
-          <Card>
-            <div className="p-4 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Next Payment</h3>
-            </div>
-            <div className="p-4">
-              <div className="text-center mb-4">
-                <div className="text-2xl font-bold text-red-600 mb-1">
-                  {paymentOverview.nextPayment.amount}
-                </div>
-                <div className="text-sm text-slate-600">
-                  {paymentOverview.nextPayment.loanName}
-                </div>
+          {upcomingPayments.length > 0 && (
+            <Card>
+              <div className="p-4 border-b border-slate-200">
+                <h3 className="text-lg font-semibold text-slate-900">Next Payment</h3>
               </div>
-              
-              <div className="bg-slate-50 rounded-lg p-3 mb-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-600">Due Date:</span>
-                  <span className="font-medium">{paymentOverview.nextPayment.dueDate}</span>
-                </div>
+              <div className="p-4">
+                {upcomingPayments.map((payment) => (
+                  <div key={payment.id}>
+                    <div className="text-right mb-2">
+                      <div className="text-2xl font-bold text-red-600">
+                        {formatCurrency(payment.amount)}
+                      </div>
+                      <div className="text-sm text-slate-600">{payment.loanType}</div>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Due Date:</span>
+                        <span className="font-medium">{payment.dueDate}</span>
+                      </div>
+                    </div>
+                    <Button className="w-full mt-4 bg-red-600 hover:bg-red-700">
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      Make Payment
+                    </Button>
+                  </div>
+                ))}
               </div>
-              
-              <Button className="w-full bg-gradient-to-r from-red-600 to-amber-500 hover:opacity-90">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Make Payment
-              </Button>
-            </div>
-          </Card>
+            </Card>
+          )}
 
           {/* Payment Summary */}
           <Card>
             <div className="p-4 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Payment Summary</h3>
+              <h3 className="text-lg font-semibold text-slate-900">Your Summary</h3>
             </div>
-            <div className="p-4 space-y-3">
-              <div className="flex justify-between">
-                <span className="text-slate-600">Monthly Total:</span>
-                <span className="font-semibold">{paymentOverview.monthlyTotal}</span>
+            <div className="p-4 space-y-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Total Applications:</span>
+                <span className="font-medium">{userStats.totalApplications}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Active Loans:</span>
+                <span className="font-medium text-green-600">{userStats.activeLoans}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Total Borrowed:</span>
+                <span className="font-medium">{formatCurrency(userStats.totalBorrowed)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
                 <span className="text-slate-600">On-time Rate:</span>
-                <span className="font-semibold text-green-600">{paymentOverview.onTimeRate}</span>
+                <span className="font-medium text-green-600">100%</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Overdue Amount:</span>
-                <span className="font-semibold text-green-600">{paymentOverview.overdueAmount}</span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Credit Score Widget */}
-          <Card>
-            <div className="p-4 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">AI Credit Score</h3>
-            </div>
-            <div className="p-4 text-center">
-              <div className="text-3xl font-bold text-green-600 mb-2">750</div>
-              <div className="text-sm text-slate-600 mb-4">Excellent</div>
-              <div className="w-full bg-slate-200 rounded-full h-2 mb-4">
-                <div className="bg-gradient-to-r from-red-600 to-amber-500 h-2 rounded-full" style={{width: '75%'}}></div>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => navigate('/dashboard/portfolio')}
-              >
-                View Details
-              </Button>
             </div>
           </Card>
         </div>
