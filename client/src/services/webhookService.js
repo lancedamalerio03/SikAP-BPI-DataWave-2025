@@ -10,7 +10,8 @@ const WEBHOOK_TIMEOUT = parseInt(process.env.REACT_APP_WEBHOOK_TIMEOUT) || 30000
 const WEBHOOK_ENDPOINTS = {
   PRELOAN_APPLICATION: 'preloan-application',
   ESG_ANALYSIS: 'esg-analysis',
-  ASSET_DECLARATION: 'asset-declaration'
+  ASSET_DECLARATION: 'asset-declaration',
+  LOAN_APPROVAL: 'loan-approval'
 }
 
 class WebhookService {
@@ -18,7 +19,7 @@ class WebhookService {
     this.baseUrl = WEBHOOK_BASE_URL
     this.authToken = WEBHOOK_AUTH_TOKEN
     this.timeout = WEBHOOK_TIMEOUT
-    
+
     // Validate configuration
     this.validateConfig()
   }
@@ -58,10 +59,10 @@ class WebhookService {
    */
   async sendToWebhook(endpoint, data, options = {}) {
     const url = `${this.baseUrl}/${endpoint}`
-    
+
     try {
       console.log(`Sending to webhook: ${url}`)
-      
+
       // Prepare headers with security considerations
       const headers = {
         'Content-Type': 'application/json',
@@ -109,7 +110,7 @@ class WebhookService {
 
       const response = await fetch(url, requestOptions)
       clearTimeout(timeoutId)
-      
+
       if (!response.ok) {
         const errorText = await response.text()
         throw new Error(`Webhook error: ${response.status} ${response.statusText}. ${errorText}`)
@@ -117,15 +118,14 @@ class WebhookService {
 
       const result = await response.json()
       console.log('Webhook response received successfully')
-      
+
       return result
-      
     } catch (error) {
       if (error.name === 'AbortError') {
         console.error('Webhook request timed out')
         throw new Error('Request timed out. Please try again.')
       }
-      
+
       console.error('Webhook service error:', error)
       throw error
     }
@@ -140,17 +140,14 @@ class WebhookService {
 
   /**
    * Submit preloan application with enhanced security
-   * @param {object} user - User data from Supabase auth
-   * @param {object} loanData - Loan application data
-   * @returns {Promise} Application submission result
    */
   async submitPreLoanApplication(user, loanData) {
     const applicationId = `SLN-${Date.now()}`
-    
+
     // Sanitize and validate input data
     const sanitizedLoanData = this.sanitizeLoanData(loanData)
     const sanitizedUser = this.sanitizeUserData(user)
-    
+
     const payload = {
       applicationId,
       submittedAt: new Date().toISOString(),
@@ -180,14 +177,10 @@ class WebhookService {
 
   /**
    * Submit ESG assessment data to n8n webhook
-   * @param {string} applicationId - The application ID
-   * @param {object} assessmentData - Complete ESG assessment data
-   * @param {object} user - User data
-   * @returns {Promise} ESG submission result
    */
   async submitESGAssessment(applicationId, assessmentData, user) {
     const submissionId = `ESG-${Date.now()}`
-    
+
     const payload = {
       submissionId,
       applicationId,
@@ -233,14 +226,10 @@ class WebhookService {
 
   /**
    * Submit asset declaration data to n8n webhook
-   * @param {string} applicationId - The application ID
-   * @param {object} assetData - Asset declaration form data
-   * @param {object} user - User data from Supabase auth
-   * @returns {Promise} Asset declaration submission result
    */
   async submitAssetDeclaration(applicationId, assetData, user) {
     const submissionId = `ASSET-${Date.now()}`
-    
+
     // Sanitize the asset data
     const sanitizedAssetData = {
       asset_name: this.sanitizeString(assetData.asset_name),
@@ -272,8 +261,22 @@ class WebhookService {
     }
 
     console.log('Submitting asset declaration to webhook:', payload)
-    
+
     return this.sendToWebhook(WEBHOOK_ENDPOINTS.ASSET_DECLARATION, payload)
+  }
+
+  /**
+   * Create a loan plan (loan approval workflow)
+   * Accepts a ready-to-send payload from the officer dashboard.
+   */
+  async createLoanPlan(payload, options = {}) {
+    const request = {
+      submissionId: `LOAN-PLAN-${Date.now()}`,
+      submittedAt: new Date().toISOString(),
+      workflow_type: 'loan_approval',
+      ...payload
+    }
+    return this.sendToWebhook(WEBHOOK_ENDPOINTS.LOAN_APPROVAL, request, options)
   }
 
   /**
@@ -308,7 +311,7 @@ class WebhookService {
    */
   sanitizeString(str) {
     if (!str || typeof str !== 'string') return ''
-    return str.trim().slice(0, 255) // Limit length and trim
+    return str.trim().slice(0, 255)
   }
 
   sanitizeNumber(num) {
@@ -323,14 +326,10 @@ class WebhookService {
 
   sanitizeText(text) {
     if (!text || typeof text !== 'string') return null
-    return text.trim().slice(0, 1000) // Limit to 1000 characters
+    return text.trim().slice(0, 1000)
   }
 
-  /**
-   * Test webhook connectivity with security headers
-   * @param {string} endpoint - Endpoint to test
-   * @returns {Promise} Test result
-   */
+  /** Test webhook connectivity */
   async testWebhook(endpoint) {
     const testPayload = {
       test: true,
@@ -347,19 +346,15 @@ class WebhookService {
     }
   }
 
-  /**
-   * Health check method
-   */
+  /** Health check */
   async healthCheck() {
     try {
       const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
-        headers: {
-          'User-Agent': 'SikAP-React-App/1.0'
-        },
+        headers: { 'User-Agent': 'SikAP-React-App/1.0' },
         signal: AbortSignal.timeout(5000)
       })
-      
+
       return {
         status: response.ok ? 'healthy' : 'unhealthy',
         statusCode: response.status,

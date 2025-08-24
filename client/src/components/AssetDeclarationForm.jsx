@@ -1,4 +1,4 @@
-// client/src/components/AssetDeclarationForm.jsx - Updated with webhook integration
+// client/src/components/AssetDeclarationForm.jsx 
 
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -27,25 +27,28 @@ const AssetDeclarationForm = () => {
     photos: []
   });
 
-  // Asset categories with icons
+  // ✅ Asset categories with icons — values MATCH DB CHECK:
+  // equipment, vehicle, property, electronics, furniture, jewelry, livestock, inventory, other
   const assetCategories = [
-    { value: 'vehicle', label: 'Vehicles', icon: Car, examples: 'Cars, motorcycles, trucks, boats' },
-    { value: 'equipment', label: 'Business Equipment', icon: Package, examples: 'Machinery, tools, industrial equipment' },
-    { value: 'electronics', label: 'Electronics', icon: Laptop, examples: 'Computers, phones, tablets, TVs' },
-    { value: 'appliances', label: 'Home Appliances', icon: Home, examples: 'Refrigerators, washing machines, AC units' },
-    { value: 'furniture', label: 'Furniture', icon: Home, examples: 'Tables, chairs, beds, cabinets' },
-    { value: 'jewelry', label: 'Jewelry & Accessories', icon: Gem, examples: 'Gold, watches, precious stones' },
-    { value: 'musical', label: 'Musical Instruments', icon: Music, examples: 'Guitars, pianos, drums, sound equipment' },
-    { value: 'sports', label: 'Sports Equipment', icon: Trophy, examples: 'Fitness equipment, sports gear' },
-    { value: 'other', label: 'Other Assets', icon: Package, examples: 'Art, collectibles, other valuables' }
+    { value: 'vehicle',     label: 'Vehicles',             icon: Car,     examples: 'Cars, motorcycles, trucks, boats' },
+    { value: 'equipment',   label: 'Business Equipment',   icon: Package, examples: 'Machinery, tools, industrial equipment' },
+    { value: 'electronics', label: 'Electronics',          icon: Laptop,  examples: 'Computers, phones, tablets, TVs, appliances' },
+    { value: 'furniture',   label: 'Furniture',            icon: Home,    examples: 'Tables, chairs, beds, cabinets' },
+    { value: 'jewelry',     label: 'Jewelry & Accessories',icon: Gem,     examples: 'Gold, watches, precious stones' },
+    { value: 'inventory',   label: 'Business Inventory',   icon: Package, examples: 'Stock-in-trade, resale items' },
+    { value: 'livestock',   label: 'Livestock',            icon: Package, examples: 'Cattle, pigs, poultry' },
+    { value: 'property',    label: 'Real Property',        icon: Home,    examples: 'Lot, house & lot, titled assets' },
+    { value: 'other',       label: 'Other Assets',         icon: Package, examples: 'Musical instruments, sports gear, collectibles' }
   ];
 
-  // Condition options (removed multiplier since AI will handle valuation)
+  // ✅ Condition options — values MATCH DB CHECK:
+  // new, like_new, good, fair, poor
   const conditionOptions = [
-    { value: 'excellent', label: 'Excellent', description: 'Like new, minimal wear' },
-    { value: 'good', label: 'Good', description: 'Minor signs of use, fully functional' },
-    { value: 'fair', label: 'Fair', description: 'Noticeable wear but still functional' },
-    { value: 'poor', label: 'Poor', description: 'Significant wear, may need repairs' }
+    { value: 'new',       label: 'New',       description: 'Unused, with or without box' },
+    { value: 'like_new',  label: 'Like New',  description: 'Excellent, minimal wear' },
+    { value: 'good',      label: 'Good',      description: 'Minor signs of use, fully functional' },
+    { value: 'fair',      label: 'Fair',      description: 'Noticeable wear but still functional' },
+    { value: 'poor',      label: 'Poor',      description: 'Significant wear, may need repairs' }
   ];
 
   // Handle photo upload
@@ -123,7 +126,22 @@ const AssetDeclarationForm = () => {
     return asset ? Number(asset.estimatedValue || 0) : 0;
   };
 
+  // Small normalizer to guarantee DB-safe values
+  const normalizeForDb = (item) => {
+    const lower = (v) => String(v ?? '').trim().toLowerCase();
 
+    const allowedCategories = new Set([
+      'equipment','vehicle','property','electronics','furniture','jewelry','livestock','inventory','other'
+    ]);
+    const category = lower(item.category);
+    const categoryFixed = allowedCategories.has(category) ? category : 'other';
+
+    const allowedConditions = new Set(['new','like_new','good','fair','poor']);
+    const condition = lower(item.condition);
+    const conditionFixed = allowedConditions.has(condition) ? condition : 'good';
+
+    return { ...item, category: categoryFixed, condition: conditionFixed };
+  };
 
   // Handle form submission with webhook
   const handleSubmit = async () => {
@@ -145,14 +163,16 @@ const AssetDeclarationForm = () => {
 
       // Submit the single asset if it exists
       if (asset) {
+        const safeAsset = normalizeForDb(asset);
+
         const assetData = {
           application_id: applicationId,
-          asset_name: asset.name,
-          category: asset.category,
-          estimated_value: asset.estimatedValue,
-          condition: asset.condition,
-          age: asset.age || 0,
-          description: asset.description || ''
+          asset_name: safeAsset.name,
+          category: safeAsset.category,              // ✅ matches DB
+          estimated_value: safeAsset.estimatedValue, // numeric
+          condition: safeAsset.condition,            // ✅ matches DB
+          age: safeAsset.age || 0,
+          description: safeAsset.description || ''
         };
 
         const webhookResult = await webhookService.submitAssetDeclaration(
@@ -172,12 +192,13 @@ const AssetDeclarationForm = () => {
         });
       } else {
         // User chose to continue without assets - still notify the system
+        // ✅ Use allowed category/condition values to satisfy CHECK constraints
         const emptyAssetData = {
           application_id: applicationId,
           asset_name: 'No assets declared',
-          category: 'none',
+          category: 'other',
           estimated_value: 0,
-          condition: 'not_applicable',
+          condition: 'good',
           age: 0,
           description: 'Borrower chose to continue without declaring assets'
         };
@@ -485,7 +506,9 @@ const AssetDeclarationForm = () => {
                 </div>
                 <div>
                   <div className="text-sm text-slate-600">Condition</div>
-                  <div className="font-medium">{conditionOptions.find(opt => opt.value === asset.condition)?.label}</div>
+                  <div className="font-medium">
+                    {conditionOptions.find(opt => opt.value === asset.condition)?.label}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm text-slate-600">Age</div>
