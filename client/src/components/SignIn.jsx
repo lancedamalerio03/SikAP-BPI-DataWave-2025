@@ -52,6 +52,13 @@ export default function SignIn() {
     navigate('/')
   }
 
+  const handleDemoCredentials = () => {
+    setFormData({
+      email: 'eskwelabsautomation@gmail.com',
+      password: 'sikap123'
+    })
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
@@ -193,14 +200,25 @@ export default function SignIn() {
             </form>
 
             {/* Demo Credentials */}
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="font-medium text-blue-900 mb-2">Demo Credentials</h4>
-              <p className="text-sm text-blue-700 mb-2">For testing, use this email and password combinations. Risk Profile Unavailable for First-time users.</p>
-              <div className="text-xs text-blue-600 font-mono">
-                Email: eskwelabsautomation@gmail.com<br />
-                Password: sikap123
+            <button 
+              type="button"
+              onClick={handleDemoCredentials}
+              className="mt-6 p-4 w-full text-left bg-blue-50 border border-blue-200 rounded-lg transition-all duration-200 hover:bg-blue-100 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-1 bg-blue-100 rounded-full">
+                  <User className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h4 className="font-medium text-blue-900 mb-2">Demo Credentials</h4>
+                  <p className="text-sm text-blue-700 mb-2">Click here to auto-fill demo credentials. Risk Profile Unavailable for First-time users.</p>
+                  <div className="text-xs text-blue-600 font-mono bg-blue-100/50 p-2 rounded">
+                    Email: eskwelabsautomation@gmail.com<br />
+                    Password: sikap123
+                  </div>
+                </div>
               </div>
-            </div>
+            </button>
 
             {/* Divider */}
             <div className="my-6">
