@@ -34,32 +34,113 @@ const ProfilePage = () => {
 
   // Load user data on component mount
   useEffect(() => {
-    console.log('ProfilePage: Loading user data', user);
-    if (user?.profile) {
-      setEditData({
-        firstName: user.profile.first_name || '',
-        lastName: user.profile.last_name || '',
-        email: user.profile.email || user.email || '',
-        phone: user.profile.mobile_number || '',
-        address: user.profile.address || '123 Main St, Pasig City, Metro Manila',
-        dateOfBirth: user.profile.date_of_birth || '',
-        monthlyIncomeRange: user.profile.monthly_income_range || '₱25,000 - ₱50,000',
-        businessType: user.profile.business_type || 'Online Selling'
-      });
-    } else if (user) {
-      // Fallback to basic user data
-      setEditData({
-        firstName: user.firstName || 'demo',
-        lastName: user.lastName || 'User',
-        email: user.email || 'demo@sikap.com',
-        phone: '+63 917 123 4567',
-        address: '123 Main St, Pasig City, Metro Manila',
-        dateOfBirth: '1/15/1985',
-        monthlyIncomeRange: '₱25,000 - ₱50,000',
-        businessType: 'Online Selling'
-      });
-    }
-  }, [user?.id, user?.profile]); // Depend on specific user properties
+    const loadUserProfile = async () => {
+      if (!user?.id) return;
+      
+      console.log('ProfilePage: Loading user data', user);
+      
+      try {
+        // Fetch data from multiple tables in parallel
+        const [profileResult, addressResult, employmentResult] = await Promise.all([
+          // 1. Fetch user profile
+          supabase
+            .from('users_profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single(),
+          
+          // 2. Fetch address information
+          supabase
+            .from('user_addresses')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('is_primary', true)
+            .limit(1),
+          
+          // 3. Fetch employment information
+          supabase
+            .from('user_employment')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('is_primary', true)
+            .limit(1)
+        ]);
+
+        const profile = profileResult.data;
+        const address = addressResult.data?.[0];
+        const employment = employmentResult.data?.[0];
+
+        // Handle errors
+        if (profileResult.error) {
+          console.error('Error fetching user profile:', profileResult.error);
+        }
+        if (addressResult.error) {
+          console.error('Error fetching user address:', addressResult.error);
+        }
+        if (employmentResult.error) {
+          console.error('Error fetching user employment:', employmentResult.error);
+        }
+
+        // Construct address string
+        let addressString = '';
+        if (address) {
+          const parts = [
+            address.unit_number,
+            address.street_address,
+            address.barangay,
+            address.city,
+            address.province
+          ].filter(Boolean);
+          addressString = parts.join(', ');
+        }
+
+        // Format monthly income as range
+        let monthlyIncomeRange = '';
+        if (employment?.monthly_income) {
+          const income = employment.monthly_income;
+          if (income < 25000) {
+            monthlyIncomeRange = '₱10,000 - ₱25,000';
+          } else if (income < 50000) {
+            monthlyIncomeRange = '₱25,000 - ₱50,000';
+          } else if (income < 100000) {
+            monthlyIncomeRange = '₱50,000 - ₱100,000';
+          } else if (income < 250000) {
+            monthlyIncomeRange = '₱100,000 - ₱250,000';
+          } else {
+            monthlyIncomeRange = '₱250,000+';
+          }
+        }
+        
+        // Set the complete user data
+        setEditData({
+          firstName: profile?.first_name || '',
+          lastName: profile?.last_name || '',
+          email: profile?.email || user.email || '',
+          phone: profile?.mobile_number || '',
+          address: addressString,
+          dateOfBirth: profile?.date_of_birth || '',
+          monthlyIncomeRange: monthlyIncomeRange,
+          businessType: employment?.occupation || ''
+        });
+
+      } catch (error) {
+        console.error('Error loading user profile:', error);
+        // Fallback to basic user data
+        setEditData({
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          email: user.email || '',
+          phone: '',
+          address: '',
+          dateOfBirth: '',
+          monthlyIncomeRange: '',
+          businessType: ''
+        });
+      }
+    };
+    
+    loadUserProfile();
+  }, [user?.id]); // Depend on user ID
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -80,7 +161,7 @@ const ProfilePage = () => {
         throw new Error('Please fill in required fields');
       }
 
-      // Update the user profile in Supabase
+      // Update the user profile in users_profiles table
       const { error: profileError } = await supabase
         .from('users_profiles')
         .update({
@@ -88,15 +169,74 @@ const ProfilePage = () => {
           last_name: editData.lastName,
           email: editData.email,
           mobile_number: editData.phone,
-          address: editData.address,
           date_of_birth: editData.dateOfBirth,
-          monthly_income_range: editData.monthlyIncomeRange,
-          business_type: editData.businessType,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
 
       if (profileError) throw profileError;
+
+      // Update employment information if businessType is provided
+      if (editData.businessType) {
+        // Convert monthly income range back to a number for storage
+        let monthlyIncome = null;
+        if (editData.monthlyIncomeRange) {
+          switch (editData.monthlyIncomeRange) {
+            case '₱10,000 - ₱25,000':
+              monthlyIncome = 17500; // midpoint
+              break;
+            case '₱25,000 - ₱50,000':
+              monthlyIncome = 37500;
+              break;
+            case '₱50,000 - ₱100,000':
+              monthlyIncome = 75000;
+              break;
+            case '₱100,000 - ₱250,000':
+              monthlyIncome = 175000;
+              break;
+            case '₱250,000+':
+              monthlyIncome = 250000;
+              break;
+          }
+        }
+
+        // Check if employment record exists
+        const { data: existingEmployment } = await supabase
+          .from('user_employment')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_primary', true)
+          .limit(1);
+
+        if (existingEmployment && existingEmployment.length > 0) {
+          // Update existing employment record
+          const { error: employmentError } = await supabase
+            .from('user_employment')
+            .update({
+              occupation: editData.businessType,
+              monthly_income: monthlyIncome,
+              updated_at: new Date().toISOString()
+            })
+            .eq('user_id', user.id)
+            .eq('is_primary', true);
+
+          if (employmentError) throw employmentError;
+        } else {
+          // Create new employment record
+          const { error: employmentError } = await supabase
+            .from('user_employment')
+            .insert({
+              user_id: user.id,
+              occupation: editData.businessType,
+              monthly_income: monthlyIncome,
+              employment_status: 'Self-employed', // Default assumption
+              is_primary: true,
+              created_at: new Date().toISOString()
+            });
+
+          if (employmentError) throw employmentError;
+        }
+      }
 
       setSuccess('Profile updated successfully!');
       setIsEditing(false);
@@ -126,15 +266,7 @@ const ProfilePage = () => {
     }));
   };
 
-  const handleDisconnect = (accountId) => {
-    console.log('Disconnecting account:', accountId);
-    alert(`Disconnecting ${accountId}...`);
-  };
 
-  const handleConnect = () => {
-    console.log('Connecting new account...');
-    alert('Opening account connection flow...');
-  };
 
   const handleTwoFactorAuth = () => {
     console.log('Setting up two-factor authentication...');
@@ -159,53 +291,7 @@ const ProfilePage = () => {
     }
   };
 
-  // Connected accounts data (hardcoded as per your requirement)
-  const connectedAccounts = [
-    {
-      id: 'gcash',
-      name: 'GCash',
-      identifier: '****1234',
-      type: 'E-wallet',
-      lastSync: '2025-03-10',
-      transactions: 1250,
-      connected: true,
-      icon: 'GC',
-      color: 'bg-blue-600'
-    },
-    {
-      id: 'maya',
-      name: 'Maya',
-      identifier: '****5678',
-      type: 'E-wallet', 
-      lastSync: '2025-04-08',
-      transactions: 832,
-      connected: true,
-      icon: 'MY',
-      color: 'bg-green-600'
-    },
-    {
-      id: 'bpi',
-      name: 'BPI Savings Account',
-      identifier: '****9012',
-      type: 'Bank Account',
-      lastSync: '2025-03-10',
-      transactions: 45,
-      connected: true,
-      icon: 'BPI',
-      color: 'bg-red-600'
-    },
-    {
-      id: 'facebook',
-      name: 'Facebook Business',
-      identifier: '@juansbusiness',
-      type: 'Social Media',
-      lastSync: '2025-03-08',
-      transactions: 0,
-      connected: true,
-      icon: 'FB',
-      color: 'bg-blue-700'
-    }
-  ];
+
 
   // Notification items based on state
   const notificationItems = [
@@ -373,17 +459,11 @@ const ProfilePage = () => {
                 {/* Address */}
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 mb-2">Address</label>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      name="address"
-                      value={editData.address}
-                      onChange={handleInputChange}
-                      className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                      disabled={loading}
-                    />
-                  ) : (
-                    <p className="text-slate-900 py-3">{editData.address}</p>
+                  <p className="text-slate-900 py-3">{editData.address || 'Not specified'}</p>
+                  {isEditing && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Address information is managed through your complete profile setup. Contact support to update your address.
+                    </p>
                   )}
                 </div>
 
@@ -452,60 +532,7 @@ const ProfilePage = () => {
             </div>
           </div>
 
-          {/* Connected Accounts */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="p-6 border-b border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900">Connected Accounts</h3>
-              <p className="text-sm text-slate-600 mt-1">Manage your linked accounts for better credit scoring</p>
-            </div>
 
-            <div className="p-6">
-              <div className="space-y-4">
-                {connectedAccounts.map((account) => (
-                  <div key={account.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 ${account.color} rounded-lg flex items-center justify-center text-white text-sm font-bold`}>
-                        {account.icon}
-                      </div>
-                      <div>
-                        <div className="font-medium text-slate-900">{account.name}</div>
-                        <div className="text-sm text-slate-500">{account.identifier} • {account.type}</div>
-                        <div className="text-xs text-slate-400">Last sync: {account.lastSync} • {account.transactions} transactions</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">Connected</span>
-                      <button
-                        onClick={() => handleDisconnect(account.id)}
-                        className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
-                      >
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Connect New Account */}
-                <div className="flex items-center justify-between p-4 border-2 border-dashed border-slate-300 rounded-lg hover:border-slate-400 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center">
-                      <span className="text-slate-400 text-lg">+</span>
-                    </div>
-                    <div>
-                      <div className="font-medium text-slate-700">Connect New Account</div>
-                      <div className="text-sm text-slate-500">Link another e-wallet, bank, or social media account</div>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={handleConnect}
-                    className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    Connect
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Right Column - Account Overview & Settings */}
@@ -518,33 +545,27 @@ const ProfilePage = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-slate-400 rounded"></div>
-                  <span className="text-sm text-slate-600">Member Since</span>
+                  <span className="text-sm text-slate-600">Profile Status</span>
                 </div>
-                <span className="font-medium">March 2023</span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-green-500 rounded"></div>
-                  <span className="text-sm text-slate-600">Credit Score</span>
-                </div>
-                <span className="font-medium text-green-600">750</span>
+                <span className="font-medium text-green-600">
+                  {user?.profileComplete ? 'Complete' : 'Incomplete'}
+                </span>
               </div>
               
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-blue-500 rounded"></div>
-                  <span className="text-sm text-slate-600">Active Loans</span>
+                  <span className="text-sm text-slate-600">Business Type</span>
                 </div>
-                <span className="font-medium">2</span>
+                <span className="font-medium">{editData.businessType || 'Not specified'}</span>
               </div>
               
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-purple-500 rounded"></div>
-                  <span className="text-sm text-slate-600">Total Assets</span>
+                  <span className="text-sm text-slate-600">Income Range</span>
                 </div>
-                <span className="font-medium">₱120K</span>
+                <span className="font-medium">{editData.monthlyIncomeRange || 'Not specified'}</span>
               </div>
             </div>
           </div>
