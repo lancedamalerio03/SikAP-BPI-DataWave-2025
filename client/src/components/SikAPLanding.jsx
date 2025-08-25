@@ -69,7 +69,7 @@ export function SikAPLanding() {
   const navigationItems = [
     { name: 'Programs', href: '/programs' },
     { name: 'About Us', href: '/about' },
-    { name: 'FAQs', href: '/faqs' },
+    { name: 'FAQs', href: '/faq' },
     { name: 'Contact Us', href: '/contact' }
   ]
 
@@ -510,7 +510,7 @@ export function SikAPLanding() {
               <span>•</span>
               <button onClick={() => navigate('/contact')} className="hover:text-white">Contact</button>
               <span>•</span>
-              <button onClick={() => navigate('/faqs')} className="hover:text-white">FAQs</button>
+              <button onClick={() => navigate('/faq')} className="hover:text-white">FAQs</button>
               <span>•</span>
               <span>BSP Regulated</span>
             </div>
