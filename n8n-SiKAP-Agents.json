@@ -1,0 +1,2899 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "tableId": "preloan_applications",
+        "dataToSend": "autoMapInputData"
+      },
+      "id": "133ef996-648e-4046-b853-200ddfc51438",
+      "name": "Create Pre-loan Application",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        272
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        560,
+        544
+      ],
+      "id": "d08fbcfd-7bbf-4444-9bfc-5e0c64488f23",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "TVbDVnXNF4PmdrTX",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "ACCEPT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "2ba31437-ec5e-4874-b706-c410f9153b65"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ACCEPT"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b6f4b673-0cae-4ca3-9d56-1c2ba21ce36d",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "REVIEW",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "REVIEW"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b51e0327-1bf9-4abf-8057-62c76f12673d",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "REJECT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "REJECT"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1280,
+        256
+      ],
+      "id": "41e88c46-e256-443e-87cf-11c6a0d8d5f0",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and clean JSON from AI agent response\nconst input = $input.all()[0].json;\n\n// Handle different input structures more robustly\nlet rawResponse = '';\nif (input.output) {\n  rawResponse = input.output;\n} else if (input.response) {\n  rawResponse = input.response;\n} else if (input.content) {\n  rawResponse = input.content;\n} else if (Array.isArray(input) && input[0]?.output) {\n  rawResponse = input[0].output;\n} else if (typeof input === 'string') {\n  rawResponse = input;\n} else {\n  rawResponse = JSON.stringify(input);\n}\n\nconsole.log('Raw AI Response:', rawResponse);\n\n// More comprehensive cleaning of the response\nlet cleanJSON = rawResponse\n  .replace(/```json\\n?/gi, '')        // Remove json code blocks (case insensitive)\n  .replace(/```\\n?/g, '')             // Remove closing code blocks\n  .replace(/^[^{]*({.*})[^}]*$/s, '$1') // Extract JSON object if surrounded by text\n  .replace(/^\\s+|\\s+$/g, '')          // Remove leading/trailing whitespace\n  .trim();\n\nconsole.log('Cleaned JSON:', cleanJSON);\n\n// Try to parse the cleaned JSON\ntry {\n  const parsedData = JSON.parse(cleanJSON);\n  \n  console.log('Parsed Data:', parsedData);\n  \n  // Validate required fields\n  if (!parsedData.applicationId || !parsedData.decision) {\n    throw new Error('Missing required fields: applicationId or decision');\n  }\n  \n  // Extract and validate the loan decision data with new fields\n  const result = {\n    applicationId: parsedData.applicationId || 'unknown',\n    decision: (parsedData.decision || '').toUpperCase(),\n    confidence: Math.min(Math.max(parseFloat(parsedData.confidence) || 0, 0), 1), // Clamp between 0-1\n    message: parsedData.message || 'No message provided',\n    reasoning: parsedData.reasoning || 'No reasoning provided',\n    \n    // NEW FIELDS - Financial Analysis\n    monthlyPaymentEstimate: parseFloat(parsedData.monthly_payment_estimate) || null,\n    debtToIncomeRatio: parseFloat(parsedData.debt_to_income_ratio) || null,\n    incomeAssessment: parsedData.income_assessment || 'Not assessed',\n    \n    // Array fields\n    nextSteps: Array.isArray(parsedData.nextSteps) ? parsedData.nextSteps : \n               Array.isArray(parsedData.next_steps) ? parsedData.next_steps : [], // Handle both naming conventions\n    \n    // Metadata\n    timestamp: new Date().toISOString(),\n    originalResponse: rawResponse,\n    processingStatus: 'SUCCESS'\n  };\n  \n  // Validate decision values\n  const validDecisions = ['ACCEPT', 'REVIEW', 'REJECT'];\n  if (!validDecisions.includes(result.decision)) {\n    console.warn(`Invalid decision: ${result.decision}, defaulting to REVIEW`);\n    result.decision = 'REVIEW';\n    result.message = `Invalid decision received: ${parsedData.decision}`;\n  }\n  \n  // Validate DTI ratio (should be between 0 and 2.0 for sanity)\n  if (result.debtToIncomeRatio !== null && (result.debtToIncomeRatio < 0 || result.debtToIncomeRatio > 2.0)) {\n    console.warn(`Unusual DTI ratio: ${result.debtToIncomeRatio}, flagging for review`);\n    result.incomeAssessment = `Unusual DTI ratio detected: ${(result.debtToIncomeRatio * 100).toFixed(1)}%`;\n  }\n  \n  // Add calculated fields for easier database queries\n  result.dtiPercentage = result.debtToIncomeRatio ? Math.round(result.debtToIncomeRatio * 100 * 100) / 100 : null; // DTI as percentage (e.g., 4.73)\n  result.isAutoApproved = result.decision === 'ACCEPT' && result.confidence >= 0.8;\n  result.requiresReview = result.decision === 'REVIEW' || result.confidence < 0.7;\n  \n  console.log('Final Result:', result);\n  return [{ json: result }];\n  \n} catch (error) {\n  console.error('Parse Error:', error.message);\n  console.error('Raw Response that failed:', rawResponse);\n  \n  // Try to extract applicationId from the original response for better tracking\n  let applicationId = 'parse_error';\n  try {\n    const idMatch = rawResponse.match(/\"applicationId\":\\s*\"([^\"]+)\"/);\n    if (idMatch) {\n      applicationId = idMatch[1];\n    }\n  } catch (e) {\n    // Ignore extraction errors\n  }\n  \n  // If parsing fails, return comprehensive error info\n  return [{\n    json: {\n      applicationId: applicationId,\n      decision: 'ERROR',\n      confidence: 0,\n      message: `AI response parsing failed`,\n      reasoning: `Failed to parse AI response: ${error.message}. Raw response: ${rawResponse.substring(0, 200)}...`,\n      \n      // Set financial fields to null on error\n      monthlyPaymentEstimate: null,\n      debtToIncomeRatio: null,\n      incomeAssessment: 'Error in processing',\n      dtiPercentage: null,\n      isAutoApproved: false,\n      requiresReview: true,\n      \n      nextSteps: [\n        'Review AI response format',\n        'Check prompt instructions',\n        'Manual review required',\n        'Contact technical support'\n      ],\n      timestamp: new Date().toISOString(),\n      originalResponse: rawResponse,\n      processingStatus: 'PARSE_ERROR',\n      error: {\n        message: error.message,\n        stack: error.stack,\n        rawResponseLength: rawResponse.length,\n        cleanedJSON: cleanJSON.substring(0, 500) // First 500 chars for debugging\n      }\n    }\n  }];\n}"
+      },
+      "id": "48d5088a-bdf8-439d-9736-76a08f2e2cb9",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Return ONLY a valid JSON object as specified at the end. No extra text, no markdown, no code fences.\n\nYou are an inclusive, transparent pre-loan underwriter for SikAP. Your job is to make a cautious pre-approval call that routes applicants to the right next stage. Favor access; if uncertain and there's no hard stop, choose REVIEW over outright rejection.\nPRINCIPLES:\n\nAlternative-data & movable-asset friendly; many applicants are thin-file\n\nClear, borrower-friendly reasoning\n\nConservative but inclusive; consider small, conditional approvals\n\nThis is pre-approval only, not a final credit decision\n\nCURRENT APPLICATION DATA: User Profile:\n\nUser ID: {{ $json.user_id || 'unknown' }}\n\nCredit Score: {{ Number($json.credit_score) || 0 }}\n\nAML Flagged: {{ $json.aml_flagged === true ? 'true' : 'false' }}\n\nID Verified: {{ $json.id_verified === true ? 'true' : 'false' }}\n\nAddress Verified: {{ $json.address_verified === true ? 'true' : 'false' }}\n\nRisk Grade: {{ $json.risk_grade || 'unknown' }}\n\nMembership Year: {{ Number($json.membership_year) || 0 }}\n\nEmployment & Income:\n\nEmployment Status: {{ $('Get User Information').item.json.employment_status || 'unknown' }}\n\nOccupation: {{ $('Get User Information').item.json.occupation || 'unknown' }}\n\nMonthly Income: ₱{{ Number($('Get User Information').item.json.monthly_income) || 0 }}\n\nYears of Employment: {{ Number($('Get User Information').item.json.years_of_employment) || 0 }}\n\nEmployer: {{ $('Get User Information').item.json.employer_name || 'missing' }}\n\nBusiness Details: {{ $('Get User Information').item.json.nature_of_business || 'unspecified' }} | {{ $('Get User Information').item.json.activity_of_business || 'unspecified' }} | {{ Number($('Get User Information').item.json.business_age) || 0 }} years | Address: {{ $('Get User Information').item.json.business_address || 'missing' }}\n\nWork Address: {{ $('Get User Information').item.json.work_address || 'missing' }}\n\nMonthly Funds: ₱{{ Number($('Get User Information').item.json.monthly_funds) || 0 }}\n\nLoan Application:\n\nApplication ID: {{ $('Create Pre-loan Application').item.json.id }}\n\nLoan Amount: ₱{{ Number($('Create Pre-loan Application').item.json.loan_amount) || 0 }}\n\nLoan Purpose: {{ $('Create Pre-loan Application').item.json.loan_purpose || 'unspecified' }}\n\nLoan Tenor (months): {{ Number($('Create Pre-loan Application').item.json.loan_tenor_months) || 0 }}\n\nRepayment Frequency: {{ $('Create Pre-loan Application').item.json.repayment_frequency || 'monthly' }}\n\nUrgency: {{ $('Create Pre-loan Application').item.json.urgency || 'medium' }}\n\nAdditional Info: {{ $('Create Pre-loan Application').item.json.additional_information || 'N/A' }}\n\nLOAN AMORTIZATION & AFFORDABILITY CALCULATIONS:\nMonthly Payment Calculation (assuming 2% monthly interest rate):\nLet P = {{ Number($('Create Pre-loan Application').item.json.loan_amount) || 0 }}\nLet n = {{ Number($('Create Pre-loan Application').item.json.loan_tenor_months) || 0 }}\nLet r = 0.02 (2% monthly rate)\n\nMonthly Payment = P × [r(1+r)^n] / [(1+r)^n - 1]\n\nDebt-to-Income (DTI) Thresholds:\n\nConservative: Monthly payment ≤ 25% of monthly income\n\nModerate: Monthly payment ≤ 35% of monthly income\n\nHigh: Monthly payment ≤ 45% of monthly income\n\nIncome Requirements:\n\nMinimum monthly income = (Monthly Payment / 0.25) for conservative approval\n\nModerate risk = (Monthly Payment / 0.35)\n\nHigh risk = (Monthly Payment / 0.45)\n\nEmployment Stability Factors:\nFor Employed (Full-time/Part-time):\n\nYears of employment ≥ 3: Excellent stability (+confidence)\n\nYears of employment 2-3: Good stability (standard assessment)\n\nYears of employment 1-2: Acceptable (caution)\n\nYears of employment < 1: Monitor closely but don't exclude\n\nFor Self-employed/Freelancer/Contractor:\n\nVerify at least 6–12 months of activity when < 1 year\n\nwork_address helpful for verification (not mandatory)\n\nOccupation alignment with income should be reasonable\n\nFor Business Owner:\n\nbusiness_age ≥ 3 years: Excellent stability\n\nbusiness_age 18–36 months: Good stability (standard assessment)\n\nbusiness_age 12–18 months: Acceptable with closer review\n\nbusiness_age < 12 months: Consider carefully (documentation focus)\n\nFor OFW:\n\nGenerally stable income profile\n\nyears_of_employment overseas ≥ 6 months: Acceptable\n\nFor Student:\n\nUse total available funds (monthly_funds + monthly_income if any)\n\nFor Unemployed:\n\nAssess total monthly_funds and any irregular income\n\nFor Retired:\n\nPension/savings provide foundation; consider total picture\n\nDECISION POLICY:\n\nHard Stops:\n\nIf {{ $json.aml_flagged === true ? 'true' : 'false' }} == true → REJECT (confidence 1.0)\n\nIf {{ $json.id_verified === true ? 'true' : 'false' }} == false or {{ $json.address_verified === true ? 'true' : 'false' }} == false → REVIEW (KYC required)\n\nIf primary income source is null or < 5000 → REVIEW (income verification needed)\n\nIncome Source Validation by Employment Status:\n\nEmployed: Use monthly_income (preferred > 0), if employer_name missing → note for verification but don't block\n\nSelf-employed/Freelancer: Use monthly_income (preferred > 0), work_address helpful but not required\n\nBusiness Owner: Use monthly_income (preferred > 0), business details helpful for assessment\n\nOFW: Use monthly_income (preferred > 0)\n\nStudent: Use monthly_funds or monthly_income, whichever is higher\n\nUnemployed/Retired: Use monthly_funds; assess case-by-case\n\nIncome Affordability Check (employment-type DTI bands):\nFor Employed/OFW:\n\nDTI ≤ 30% → ACCEPT\n\nDTI 31–40% → ACCEPT with standard conditions\n\nDTI 41–55% → REVIEW\n\nDTI > 55% → REVIEW with additional documentation\n\nFor Self-employed/Freelancer/Business Owner:\n\nDTI ≤ 28% → ACCEPT\n\nDTI 29–38% → ACCEPT with standard conditions\n\nDTI 39–50% → REVIEW\n\nDTI > 50% → REVIEW with additional documentation\n\nFor Student/Unemployed/Retired:\n\nDTI ≤ 45% → ACCEPT\n\nDTI 46–65% → ACCEPT with shorter terms or co-maker\n\nDTI > 65% → REVIEW\n\nCredit Score Tiers:\n\nThin-file: {{ Number($json.credit_score) || 0 }} < 500 or null\n\nFair: {{ Number($json.credit_score) || 0 }} 500-599\n\nGood: {{ Number($json.credit_score) || 0 }} 600-679\n\nExcellent: {{ Number($json.credit_score) || 0 }} >= 680\n\nApproval Matrix:\n\nThin-file with KYC + Income: If {{ Number($json.credit_score) || 0 }} < 500 AND {{ $json.id_verified === true ? 'true' : 'false' }} == true AND {{ $json.address_verified === true ? 'true' : 'false' }} == true AND {{ $json.risk_grade || 'unknown' }} in [A,B,C] AND DTI ≤ 30% → ACCEPT if {{ Number($('Create Pre-loan Application').item.json.loan_amount) || 0 }} <= 35000 AND {{ Number($('Create Pre-loan Application').item.json.loan_tenor_months) || 0 }} <= 18, else REVIEW\n\nFair Credit + Income: If {{ Number($json.credit_score) || 0 }} 500-599 AND {{ $json.risk_grade || 'unknown' }} in [A,B,C] AND DTI ≤ 35% → ACCEPT if {{ Number($('Create Pre-loan Application').item.json.loan_amount) || 0 }} <= 75000 AND {{ Number($('Create Pre-loan Application').item.json.loan_tenor_months) || 0 }} <= 24, else REVIEW\n\nGood Credit + Income: If {{ Number($json.credit_score) || 0 }} 600-679 AND {{ $json.risk_grade || 'unknown' }} in [A,B,C] AND DTI ≤ 40% → ACCEPT if {{ Number($('Create Pre-loan Application').item.json.loan_amount) || 0 }} <= 150000 AND {{ Number($('Create Pre-loan Application').item.json.loan_tenor_months) || 0 }} <= 36, else REVIEW\n\nExcellent Credit + Income: If {{ Number($json.credit_score) || 0 }} >= 680 AND DTI ≤ 45% → ACCEPT up to 300000, unless high-risk purpose or excessive tenor\n\nRisk Adjustments:\n\nHigh-risk purposes: If {{ $('Create Pre-loan Application').item.json.loan_purpose || 'unspecified' }} in [\"debt_consolidation\", \"others\"] → tighten by one step (ACCEPT→REVIEW)\n\nEmergency urgency: If {{ $('Create Pre-loan Application').item.json.urgency || 'medium' }} == \"emergency\" AND {{ Number($('Create Pre-loan Application').item.json.loan_amount) || 0 }} > 50000 → REVIEW\n\nLong tenor: If {{ Number($('Create Pre-loan Application').item.json.loan_tenor_months) || 0 }} > 24 → tighten DTI requirement by 7%\n\nMembership bonus: If {{ Number($json.membership_year) || 0 }} >= 2 → allow 3% higher DTI\n\nConfidence Calculation:\nStart with 0.75, then adjust:\n\n{{ Number($json.credit_score) || 0 }} >= 700 AND {{ $json.risk_grade || 'unknown' }} == \"A\" AND DTI ≤ 28%: +0.12\n\n{{ Number($json.credit_score) || 0 }} >= 650 AND DTI ≤ 32%: +0.08\n\nDTI ≤ 28%: +0.04\n\n{{ Number($('Get User Information').item.json.years_of_employment) || 0 }} ≥ 3: +0.04\n\n{{ Number($('Create Pre-loan Application').item.json.loan_tenor_months) || 0 }} ≤ 12: +0.04\n\n{{ $('Create Pre-loan Application').item.json.loan_purpose || 'unspecified' }} in [\"education\", \"health\", \"business_expansion\"]: +0.04\n\n{{ Number($json.membership_year) || 0 }} ≥ 2: +0.04\n\n{{ Number($json.credit_score) || 0 }} < 550 but good capacity: -0.06\n\nDTI > 55%: -0.12\n\n{{ Number($('Get User Information').item.json.years_of_employment) || 0 }} < 1: -0.06\n\n{{ $('Create Pre-loan Application').item.json.loan_purpose || 'unspecified' }} == \"debt_consolidation\": -0.05\n\nMissing key docs (employer_name OR business details OR work/business address missing): -0.05\n\nIf {{ $json.aml_flagged === true ? 'true' : 'false' }} == true → set to 1.0 (only absolute rejection)\n\nCURRENT CASE ASSESSMENT:\nEvaluate user {{ $json.user_id || 'unknown' }} with:\n\nCredit score: {{ Number($json.credit_score) || 0 }}\n\nRisk grade: {{ $json.risk_grade || 'unknown' }}\n\nEmployment: {{ $('Get User Information').item.json.employment_status || 'unknown' }} ({{ Number($('Get User Information').item.json.years_of_employment) || 0 }} years)\n\nPrimary Income: ₱{{ Number($('Get User Information').item.json.monthly_income) || 0 }} | Funds: ₱{{ Number($('Get User Information').item.json.monthly_funds) || 0 }}\n\nEmployer/Business: {{ $('Get User Information').item.json.employer_name || 'missing' }} | {{ $('Get User Information').item.json.nature_of_business || 'unspecified' }} | {{ $('Get User Information').item.json.activity_of_business || 'unspecified' }} | Address: {{ $('Get User Information').item.json.business_address || 'missing' }}\n\nApplying for: ₱{{ Number($('Create Pre-loan Application').item.json.loan_amount) || 0 }} for {{ $('Create Pre-loan Application').item.json.loan_purpose || 'unspecified' }}\n\nTerm: {{ Number($('Create Pre-loan Application').item.json.loan_tenor_months) || 0 }} months with {{ $('Create Pre-loan Application').item.json.urgency || 'medium' }} urgency\n\nREQUIRED ANALYSIS:\n\nDetermine correct income source based on employment status\n\nCalculate estimated monthly payment\n\nCalculate DTI ratio using appropriate income source\n\nAssess employment stability and verification completeness\n\nApply employment-specific risk adjustments\n\nConsider loan purpose and urgency\n\nMake holistic decision\n\nUse your judgment to assess this application holistically. Consider the applicant's income capacity, employment stability, credit profile, and loan characteristics. Write your reasoning in a natural, conversational way that explains your decision-making process, including specific DTI calculations and income analysis.\n\nREQUIRED OUTPUT FORMAT:\nReturn ONLY a valid JSON object with NO additional text or explanation. Use this exact structure, but replace values with those calculated for this case:\n\n{\n\"applicationId\": \"{{ $('Create Pre-loan Application').item.json.id }}\",\n\"decision\": \"ACCEPT | REVIEW | REJECT\",\n\"confidence\": 0.0,\n\"message\": \"Under 100 characters, summarize decision\",\n\"reasoning\": \"Write your analysis here including employment status assessment (e.g., 'As a Business Owner with 3 years experience, using monthly_income of ₱50,000'). Include specific DTI calculation and which income source was used. Explain employment verification status (employer_name present/missing), stability factors, and overall risk assessment. Be conversational but professional.\",\n\"monthly_payment_estimate\": 0,\n\"debt_to_income_ratio\": 0.0,\n\"income_assessment\": \"Sufficient | Borderline | Insufficient\",\n\"next_steps\": [\n\"3–5 borrower-friendly next actions\"\n]\n}",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        272
+      ],
+      "id": "c5943e49-cb67-4e5e-ae00-36d314e32b12",
+      "name": "Pre-Loan Application Agent"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "preloan_applications",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Create Pre-loan Application').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "pending_documents"
+            },
+            {
+              "fieldId": "ai_decision",
+              "fieldValue": "={{ $json.decision }}"
+            },
+            {
+              "fieldId": "ai_confidence",
+              "fieldValue": "={{ $json.confidence }}"
+            },
+            {
+              "fieldId": "ai_reasoning",
+              "fieldValue": "={{ $json.reasoning }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        32
+      ],
+      "id": "c5d4da29-fad9-4023-b0e9-926f49c3c2bc",
+      "name": "ACCEPT",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "preloan_applications",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Create Pre-loan Application').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "pending"
+            },
+            {
+              "fieldId": "ai_decision",
+              "fieldValue": "={{ $json.decision }}"
+            },
+            {
+              "fieldId": "ai_confidence",
+              "fieldValue": "={{ $json.confidence }}"
+            },
+            {
+              "fieldId": "ai_reasoning",
+              "fieldValue": "={{ $json.message }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        240
+      ],
+      "id": "03a655ca-a0c2-4fd9-a3e0-5a5ec17d6fc2",
+      "name": "REVIEW",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "preloan_applications",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Create Pre-loan Application').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "rejected"
+            },
+            {
+              "fieldId": "ai_decision",
+              "fieldValue": "={{ $json.decision }}"
+            },
+            {
+              "fieldId": "ai_confidence",
+              "fieldValue": "={{ $json.confidence }}"
+            },
+            {
+              "fieldId": "ai_reasoning",
+              "fieldValue": "={{ $json.message }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        448
+      ],
+      "id": "6a45f46e-5a89-4da2-aa95-febff408a7f9",
+      "name": "REJECT",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "preloan-application",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3600f6f8-7856-4b37-a395-7d4f1982c951",
+      "name": "PreLoan Application Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -832,
+        288
+      ],
+      "webhookId": "8c589267-29fc-4cb4-a587-e8f55b70b4d1"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "preloan_risk_profiles",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "user_id",
+              "keyValue": "={{ $json.user_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        240,
+        288
+      ],
+      "id": "70922cfa-9c44-4709-9e92-0f8f4c571d21",
+      "name": "Get User Risk Profile",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "user_employment",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "user_id",
+              "keyValue": "={{ $('Create Pre-loan Application').item.json.user_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        0,
+        288
+      ],
+      "id": "2585bf3e-c8c4-41c0-8208-83875a332e34",
+      "name": "Get User Information",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2032,
+        352
+      ],
+      "id": "e62a9ced-d722-4ea4-8285-5a517723efdf",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "TVbDVnXNF4PmdrTX",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the raw input string\nconst raw = $input.first()?.json?.output ?? \"\";\n\n// ---- Clean the string of markdown/code fences/escapes ----\nlet text = String(raw).trim()\n  .replace(/^```(?:json)?\\s*/i, \"\")  // leading ``` or ```json\n  .replace(/\\s*```$/i, \"\")           // trailing ```\n  .replace(/^\"|\"$/g, \"\")             // wrapping quotes\n  .replace(/\\\\n/g, \"\")               // literal \\n\n  .replace(/\\n/g, \"\")                // actual newlines\n  .trim();\n\n// ---- Parse JSON ----\nlet parsed;\ntry {\n  parsed = JSON.parse(text);\n} catch (e) {\n  throw new Error(\"Failed to parse AI output as JSON. Cleaned text was: \" + text.slice(0, 300));\n}\n\n// Ensure we have an array\nif (!Array.isArray(parsed)) {\n  throw new Error(\"Expected an array of objects from AI output.\");\n}\n\n// ---- Extract applicationId and question items ----\nlet application_id = null;\nconst items = [];\n\nfor (const obj of parsed) {\n  if (obj && typeof obj === \"object\") {\n    if (Object.prototype.hasOwnProperty.call(obj, \"application_id\")) {\n      application_id = String(obj.application_id);\n      continue;\n    }\n    if (obj.category) {\n      // Collect all question/likert keys for this category\n      const category = String(obj.category).toLowerCase();\n      const entry = { category, questions: [] };\n\n      for (const [k, v] of Object.entries(obj)) {\n        if (k.startsWith(\"question\")) {\n          entry.questions.push({ type: \"open\", text: v });\n        }\n        if (k.startsWith(\"likert\") && v && typeof v === \"object\") {\n          entry.questions.push({ type: \"likert\", text: v.statement });\n        }\n      }\n      items.push(entry);\n    }\n  }\n}\n\n// ---- Map categories -> DB fields (case/format tolerant) ----\nconst catMap = {\n  \"environment\": \"environment\",\n  \"social\": \"social\",\n  \"governance\": \"governance\",\n  \"stability_1\": \"stability_1\",\n  \"stability 1\": \"stability_1\",\n  \"stability_2\": \"stability_2\",\n  \"stability 2\": \"stability_2\",\n  \"stability_3\": \"stability_3\",\n  \"stability 3\": \"stability_3\",\n};\n\n// ---- Initialize all fields so they always exist ----\nconst dbData = {\n  application_id, // keep it at the top level for convenience\n  environment:  { questions: [], responses: [] },\n  social:       { questions: [], responses: [] },\n  governance:   { questions: [], responses: [] },\n  stability_1:  { questions: [], responses: [] },\n  stability_2:  { questions: [], responses: [] },\n  stability_3:  { questions: [], responses: [] },\n};\n\n// ---- Populate from items ----\nfor (const { category, questions } of items) {\n  const key = catMap[category];\n  if (key) {\n    dbData[key].questions = questions.map(q => q.text);\n    dbData[key].responses = new Array(questions.length).fill(null); // placeholder responses\n  }\n}\n\n// ---- Return transformed data ----\nreturn { json: dbData };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        48
+      ],
+      "id": "09c81564-3b79-4edf-975f-85abca33487e",
+      "name": "Format AI Response for DB"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an inclusive, borrower-friendly loan officer designing an ESG-informed questionnaire.\nGenerate EXACTLY 6 open-ended questions (1 Environment, 1 Social, 1 Governance, 3 Stability) AND 12 Likert statements (3 each for Environment, Social, Governance, Stability).\n\nRules\n\nOpen-ended questions: concise (1–3 sentences), specific, practical, not time-consuming.\n\nLikert statements: short, neutral statements suitable for a 1–5 scale (Strongly Disagree → Strongly Agree).\n\nDo NOT ask for information already provided in the data. Ask for clarification, practices, plans, or short examples instead.\n\nIf a field is missing/null, infer from related fields and keep the question concrete.\n\nUse respectful, supportive language suitable for micro-entrepreneurs, employees, and households.\n\nAdapt ESG questions depending on the loan purpose.\n\nOutput ONLY in JSON format\n[\n  { \"application_id\": {{ $json.id }} },\n  {\n    \"category\": \"Environment\",\n    \"question_1\": \"...\",\n    \"likert_1\": { \"statement\": \"...\" },\n    \"likert_2\": { \"statement\": \"...\" },\n    \"likert_3\": { \"statement\": \"...\" }\n  },\n  {\n    \"category\": \"Social\",\n    \"question_1\": \"...\",\n    \"likert_1\": { \"statement\": \"...\" },\n    \"likert_2\": { \"statement\": \"...\" },\n    \"likert_3\": { \"statement\": \"...\" }\n  },\n  {\n    \"category\": \"Governance\",\n    \"question_1\": \"...\",\n    \"likert_1\": { \"statement\": \"...\" },\n    \"likert_2\": { \"statement\": \"...\" },\n    \"likert_3\": { \"statement\": \"...\" }\n  },\n  {\n    \"category\": \"Stability_1\",\n    \"question_1\": \"...\"\n  },\n  {\n    \"category\": \"Stability_2\",\n    \"question_1\": \"...\"\n  },\n  {\n    \"category\": \"Stability_3\",\n    \"question_1\": \"...\",\n    \"likert_1\": { \"statement\": \"...\" },\n    \"likert_2\": { \"statement\": \"...\" },\n    \"likert_3\": { \"statement\": \"...\" }\n  }\n]\n\nBorrower Data References\n\nEmployment status: {{$('Get User Information').item.json.employment_status}}\nOccupation/role: {{$('Get User Information').item.json.occupation}}\nMonthly income: {{$('Get User Information').item.json.monthly_income}}\nEmployer name: {{$('Get User Information').item.json.employer_name}}\nEmployer address: {{$('Get User Information').item.json.employer_address}}\nYears of employment: {{$('Get User Information').item.json.years_of_employment}}\nIs current job/business: {{$('Get User Information').item.json.is_current}}\nIs primary income source: {{$('Get User Information').item.json.is_primary}}\n\nBusiness Data (if borrower is a business owner):\nNature of business: {{$('Get User Information').item.json.nature_of_business}}\nBusiness activity: {{$('Get User Information').item.json.activity_of_business}}\nBusiness age (years): {{$('Get User Information').item.json.business_age}}\nBusiness address/city: {{$('Get User Information').item.json.business_address}}\n\nLoan Context:\nLoan amount (PHP): {{ $('Create Pre-loan Application').item.json.loan_amount }}\nLoan tenor (months): {{ $('Create Pre-loan Application').item.json.loan_tenor_months }}\nRepayment frequency: {{ $('Create Pre-loan Application').item.json.repayment_frequency }}\nLoan purpose: {{ $('Create Pre-loan Application').item.json.loan_purpose }}\nUrgency: {{ $('Create Pre-loan Application').item.json.urgency }}\nAdditional info from borrower: {{ $('Create Pre-loan Application').item.json.additional_information }}\n\nGuidance per Dimension\n\nEnvironment (1):\n\nIf purpose is business-related: Ask about eco-friendly practices (waste, sourcing, energy, packaging).\n\nIf purpose is home_improvement: Ask about home efficiency, safety, or sustainable materials.\n\nIf purpose is education/medical/emergency/debt: Keep light-touch, e.g., personal habits, community awareness, or household energy use.\n\nSocial (1):\n\nIf business-related: Ask about community impact, employees, fair treatment.\n\nIf personal/household: Ask about how the loan supports family, dependents, or community role.\n\nGovernance (1):\n\nIf business-related: Ask about record-keeping, financial discipline, accountability.\n\nIf employed/household: Ask about budgeting, repayment planning, or responsible money management.\n\nPersonal/Business Stability (3):\n\nAlways ground in {{$('Get User Information').item.json.monthly_income}}, {{ $('Create Pre-loan Application').item.json.loan_amount }}, {{ $('Create Pre-loan Application').item.json.loan_tenor_months }}, {{ $('Create Pre-loan Application').item.json.loan_purpose }}, {{ $('Create Pre-loan Application').item.json.additional_information }}, and work/business duration.\n\nFocus on: income stability, buffers for emergencies, and how the loan strengthens livelihood, household, or financial security.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        2032,
+        48
+      ],
+      "id": "cd9791f7-8350-4ae7-b14e-2e63f57dfed1",
+      "name": "ESG Compliance Questionnaire Generator"
+    },
+    {
+      "parameters": {
+        "tableId": "esg_assessments",
+        "dataToSend": "autoMapInputData"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2656,
+        48
+      ],
+      "id": "902f400a-2086-425a-8dfa-6a12f3b04020",
+      "name": "Create ESG Assessment",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "esg-analysis",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -800,
+        912
+      ],
+      "id": "b895bbdf-e2ce-47fa-b724-0baf23977d6e",
+      "name": "ESG Analysis Trigger",
+      "webhookId": "cf169014-d643-4252-b532-088cbc4e3f9f"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"user_id\": \"{{$json.body.user.id}}\",\n  \"loan_amount\": {{ $json.body.loanData.loan_amount !== '' ? Number($json.body.loanData.loan_amount) : null }},\n  \"loan_purpose\": \"{{$json.body.loanData.loan_purpose}}\",\n  \"loan_tenor_months\": {{ $json.body.loanData.loan_tenor_months !== '' ? Number($json.body.loanData.loan_tenor_months) : null }},\n  \"repayment_frequency\": \"{{$json.body.loanData.repayment_frequency}}\",\n  \"urgency\": \"{{$json.body.loanData.urgency}}\",\n  \"additional_information\": \"{{$json.body.loanData.additional_information || ''}}\",\n  \"status\": \"{{$json.body.loanData.status || 'pending'}}\",\n  \"created_at\": \"{{$json.body.loanData.created_at || $now}}\",\n  \"updated_at\": \"{{$json.body.loanData.updated_at || $now}}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -560,
+        288
+      ],
+      "id": "62c21fe4-bf4b-49a6-84f4-7733c22a92a0",
+      "name": "Format Data"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"assessment_id\": \"{{ $json.body.esgData.assessment_id }}\",\n  \"application_id\": \"{{ $json.body.esgData.application_id }}\",\n  \"environment\":{\n    \"questions\": [{{ $json.body.esgData.environment.questions }}],\n    \"responses\": [{{ $json.body.esgData.environment.responses }}]\n  }, \n\n  \"social\":{\n      \"questions\": [{{ $json.body.esgData.social.questions }}],\n      \"responses\": [{{ $json.body.esgData.social.responses }}]\n  }, \n  \n  \"governance\":{\n      \"questions\": [{{ $json.body.esgData.governance.questions }}],\n      \"responses\": [{{ $json.body.esgData.governance.responses }}]\n  }, \n  \n  \"stability_1\":{\n      \"questions\": [{{ $json.body.esgData.stability_1.questions }}],\n      \"responses\": [{{ $json.body.esgData.stability_1.responses }}]\n  }, \n  \n  \"stability_2\":{\n      \"questions\": [{{ $json.body.esgData.stability_2.questions }}],\n      \"responses\": [{{ $json.body.esgData.stability_2.responses }}]\n  }, \n\n  \"stability_3\":{\n      \"questions\": [{{ $json.body.esgData.stability_3.questions }}],\n      \"responses\": [{{ $json.body.esgData.stability_3.responses }}]\n  },\n\n  \"status\": \"{{ $json.body.esgData.status }}\",\n  \"created_at\": \"{{ $json.body.esgData.created_at }}\",\n  \"updated_at\": \"{{ $json.body.esgData.updated_at }}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -512,
+        912
+      ],
+      "id": "c5e51e58-3531-4edd-bc96-59a2e7ed354b",
+      "name": "Format ESG"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "esg_assessments",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.assessment_id }}"
+            },
+            {
+              "keyName": "application_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.application_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "environment",
+              "fieldValue": "={{ $json.environment }}"
+            },
+            {
+              "fieldId": "social",
+              "fieldValue": "={{ $json.social }}"
+            },
+            {
+              "fieldId": "governance",
+              "fieldValue": "={{ $json.governance }}"
+            },
+            {
+              "fieldId": "stability_1",
+              "fieldValue": "={{ $json.stability_1 }}"
+            },
+            {
+              "fieldId": "stability_2",
+              "fieldValue": "={{ $json.stability_2 }}"
+            },
+            {
+              "fieldId": "stability_3",
+              "fieldValue": "={{ $json.stability_3 }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $json.updated_at }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        912
+      ],
+      "id": "84662082-383e-49f7-b62b-663287c9c744",
+      "name": "ESG Submitted",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        16,
+        688
+      ],
+      "id": "15e55d14-ade0-467b-96ba-0ed4ee203de0",
+      "name": "Acknowledge ESG Submission"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"applicationId\": \"{{ $json.id }}\",\n  \"status\": \"processing\",\n  \"message\": \"Your application is being reviewed by our AI system\",\n  \"estimatedTime\": \"2-5 minutes\",\n  \"nextSteps\": [\n    \"We'll email you when review is complete\",\n    \"Check your application status anytime\",\n    \"Prepare your documents in case of approval\"\n  ]\n}",
+        "options": {}
+      },
+      "id": "a25d3d70-c9c1-48bd-8971-7111ae952303",
+      "name": "Acknowledge Preloan Application",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        528,
+        1120
+      ],
+      "id": "229d3e78-4294-422a-94d8-00b0c4b76452",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "9B1XkywQEBRJIyS3",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "preloan_applications",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $json.application_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        112,
+        912
+      ],
+      "id": "d3e03d5e-1931-4e1a-a0f0-1c0e7fb8ee79",
+      "name": "Get User Information1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# ESG Assessment Scoring Agent\n\nYou are an expert ESG (Environmental, Social, and Governance) analyst tasked with evaluating loan applicants' sustainability and responsibility practices. Your role is to analyze their responses to ESG questionnaires and provide fair, balanced scoring.\n\n## Input Data Structure\nYou will receive the user's ESG Data:\n- Application ID: {{ $('ESG Submitted').item.json.application_id }}\n- Assessment ID: {{ $('ESG Submitted').item.json.id }}\n- Loan Information\n- ESG Categories with questions and responses for:\n  - Environment\n  - Social\n  - Governance\n  - Stability_1\n  - Stability_2\n  - Stability_3\n\n## Scoring Framework\n\n**Overall ESG Score Range: 0-100**\n- 90-100: Excellent ESG practices\n- 80-89: Good ESG practices  \n- 70-79: Adequate ESG practices\n- 60-69: Below average ESG practices\n- 50-59: Poor ESG practices\n- Below 50: Very poor ESG practices\n\n## Response Types & Scoring Guidelines\n\n### Question Types:\n1. **Open-ended questions** (Q1 in ESG Categories): Long-form text questions and responses requiring qualitative analysis\n2. **Likert scale questions** (Q2-4 in ESG Categories): Numerical responses using this scale:\n   - **5 = Strongly Agree** (Excellent)\n   - **4 = Agree** (Good)\n   - **3 = Neutral** (Average)\n   - **2 = Disagree** (Poor)\n   - **1 = Strongly Disagree** (Very Poor)\n\n### Scoring Approach:\n**Neutral/Balanced**: Not overly strict but maintains meaningful standards. Reward genuine effort and realistic plans while penalizing vague or unrealistic responses.\n\n## Category Analysis\n\n### 1. Environmental (25% weight)\n**Analyze:** \n**Questions Structure:**\n- Q1: {{ $('ESG Submitted').item.json.environment.questions[0][0] }}\n- Q2-Q4: [{{ $('ESG Submitted').item.json.environment.questions[0][1] }}, {{ $('ESG Submitted').item.json.environment.questions[0][2] }}, {{ $('ESG Submitted').item.json.environment.questions[0][3] }}]\n**Responses to evaluate:**\n- Open-ended: {{ $('ESG Submitted').item.json.environment.responses[0] }}\n- Likert responses:[{{ $('ESG Submitted').item.json.environment.responses[0][1] }}, {{ $('ESG Submitted').item.json.environment.responses[0][2] }}, {{ $('ESG Submitted').item.json.environment.responses[0][3] }}]\n\n**Scoring Criteria:**\n- **Open-ended (60% of category score)**: Look for:\n  - Specific, actionable environmental plans\n  - Understanding of environmental impact\n  - Realistic implementation strategies\n  - Innovation in sustainable practices\n- **Likert responses (40% of category score)**: Direct conversion:\n  - 5 → 95 points, 4 → 80 points, 3 → 65 points, 2 → 45 points, 1 → 25 points\n\n### 2. Social (25% weight)\n**Analyze:** \n**Questions Structure:**\n- Q1: {{ $('ESG Submitted').item.json.social.questions[0][0] }}\n- Q2-Q4: [{{ $('ESG Submitted').item.json.social.questions[0][1] }}, {{ $('ESG Submitted').item.json.social.questions[0][2] }}, {{ $('ESG Submitted').item.json.social.questions[0][3] }}]\n**Responses to evaluate:**\n- Open-ended: {{ $('ESG Submitted').item.json.social.responses[0][0] }}\n- Likert responses: [{{ $('ESG Submitted').item.json.social.responses[0][1] }}, {{ $('ESG Submitted').item.json.social.responses[0][2] }}, {{ $('ESG Submitted').item.json.social.responses[0][3] }}]\n**Scoring Criteria:**\n- **Open-ended (60% of category score)**: Evaluate:\n  - Community benefit and job creation plans\n  - Fair treatment of employees/suppliers\n  - Social impact awareness\n  - Stakeholder consideration\n- **Likert responses (40% of category score)**: Same conversion as Environmental\n\n### 3. Governance (25% weight)\n**Analyze:** \n**Questions Structure:**\n- Q1: {{ $('ESG Submitted').item.json.governance.questions[0][0] }}\n- Q2-Q4: [{{ $('ESG Submitted').item.json.governance.questions[0][1] }}, {{ $('ESG Submitted').item.json.governance.questions[0][2] }}, {{ $('ESG Submitted').item.json.governance.questions[0][3] }}]\n**Responses to evaluate:**\n- Open-ended: {{ $('ESG Submitted').item.json.governance.responses[0][0] }}\n- Likert responses: [{{ $('ESG Submitted').item.json.governance.responses[0][1] }}, {{ $('ESG Submitted').item.json.governance.responses[0][2] }}, {{ $('ESG Submitted').item.json.governance.responses[0][3] }}]\n**Scoring Criteria:**\n- **Open-ended (60% of category score)**: Assess:\n  - Financial management systems and processes\n  - Transparency and record-keeping practices\n  - Accountability mechanisms\n  - Decision-making structure\n- **Likert responses (40% of category score)**: Same conversion as other categories\n\n### 4. Financial Stability - Combined (25% weight)\n**Analyze:**\n\n**Stability_1 Questions Structure (33% of stability score):**\n- Q1: {{ $('ESG Submitted').item.json.stability_1.questions[0][0] }}\n**Stability_1 Responses to evaluate:**\n- Open-ended: {{ $('ESG Submitted').item.json.stability_1.responses[0][0] }}\n\n**Stability_2 Questions Structure (33% of stability score):**\n- Q1: {{ $('ESG Submitted').item.json.stability_2.questions[0][0] }}\n**Stability_2 Responses to evaluate:**\n- Open-ended: {{ $('ESG Submitted').item.json.stability_2.responses[0][0] }}\n\n**Stability_3 Questions Structure (34% of stability score):**\n- Q1: {{ $('ESG Submitted').item.json.stability_3.questions[0][0] }}\n- Q2-Q4: [{{ $('ESG Submitted').item.json.stability_3.questions[0][1] }}, {{ $('ESG Submitted').item.json.stability_3.questions[0][2] }}, {{ $('ESG Submitted').item.json.stability_3.questions[0][3] }}]\n**Stability_3 Responses to evaluate:**\n- Open-ended: {{ $('ESG Submitted').item.json.stability_3.responses[0][0] }}\n- Likert responses: [{{ $('ESG Submitted').item.json.stability_3.responses[0][1] }}, {{ $('ESG Submitted').item.json.stability_3.responses[0][2] }}, {{ $('ESG Submitted').item.json.stability_3.responses[0][3] }}]\n\n**Scoring Criteria:**\n- **Open-ended questions (Stability_1, Stability_2, Stability_3)**: Look for:\n  - Realistic loan utilization plans\n  - Clear repayment strategies\n  - Risk management awareness\n  - Past problem-solving examples\n- **Stability_3 Likert responses**: Same scale as other categories\n\n## Loan Context (for reference)\n- Purpose: {{ $json.loan_purpose }}\n- Addtional Information: {{ $json.additional_information }}\n\n\n## Open-Ended Response Quality Assessment\n\n### Excellent (85-95 points):\n- Specific, detailed plans with clear implementation steps\n- Demonstrates deep understanding of the topic\n- Shows innovation and proactive thinking\n- Realistic timelines and measurable goals\n\n### Good (70-84 points):\n- Clear plans with some specificity\n- Shows good understanding of concepts\n- Realistic but not highly innovative\n- Some measurable elements\n\n### Adequate (55-69 points):\n- General plans without much detail\n- Basic understanding demonstrated\n- Somewhat vague or generic responses\n- Limited measurable outcomes\n\n### Poor (40-54 points):\n- Very vague or generic responses\n- Limited understanding shown\n- Unrealistic or no specific plans\n- Lacks credibility\n\n### Very Poor (Below 40 points):\n- No meaningful response or completely irrelevant\n- No understanding demonstrated\n- No plans or completely unrealistic expectations\n\n## Calculation Process\n\n1. **Score each category separately** (0-100)\n2. **Apply equal weighting** (25% each for Environmental, Social, Governance, Financial Stability)\n3. **Calculate final ESG score**: (Env × 0.25) + (Social × 0.25) + (Gov × 0.25) + (Stability × 0.25)\n4. **Round to nearest whole number**\n\n## Decision Guidelines\n- **Accept**: ESG score ≥ 75\n- **Review**: ESG score 45-74\n- **Reject**: ESG score < 45\n\n## Output Format\nProvide your analysis in this exact JSON format:\n{\n  \"application_id\": \"{{ $('ESG Submitted').item.json.application_id }}\",\n  \"assessment_id\": \"{{ $('ESG Submitted').item.json.id }}\",\n  \"environment_score\": 78,\n  \"social_score\": 82,\n  \"governance_score\": 71,\n  \"stability_score\": 69,\n  \"overall_esg_score\": 75,\n  \"score_reasoning\": \"This borrower demonstrates a solid understanding of ESG principles with genuine commitment to responsible practices. Their strongest area is social impact, showing clear plans for community benefit and stakeholder engagement. Environmental awareness is good with specific sustainability initiatives mentioned, though implementation details could be stronger. Governance practices show basic financial management understanding but lack comprehensive systems for accountability and record-keeping. Financial stability assessment reveals realistic planning for loan utilization and repayment, with demonstrated adaptability from past challenges. Overall, this represents a borrower who takes ESG seriously and has practical, achievable plans, warranting approval with some areas identified for future development.\",\n  \"assessment_summary\": {\n    \"strengths\": [\"Strong community focus\", \"Clear financial planning\", \"Good environmental awareness\"],\n    \"areas_for_improvement\": [\"Environmental implementation timeline\", \"Governance structure needs more detail\", \"Financial record-keeping systems\"],\n    \"overall_rating\": \"Adequate ESG practices\"\n  },\n  \"decision\": \"Accept\",\n  \"confidence_level\": 85,\n  \"completed_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        912
+      ],
+      "id": "2e5da87c-975b-42cd-ab40-d4ee122054ab",
+      "name": "ESG Evaluation Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and clean JSON from ESG AI agent response\nconst input = $input.all()[0].json;\n\n// Handle different input structures more robustly\nlet rawResponse = '';\nif (input.output) {\n  rawResponse = input.output;\n} else if (input.response) {\n  rawResponse = input.response;\n} else if (input.content) {\n  rawResponse = input.content;\n} else if (Array.isArray(input) && input[0]?.output) {\n  rawResponse = input[0].output;\n} else if (typeof input === 'string') {\n  rawResponse = input;\n} else {\n  rawResponse = JSON.stringify(input);\n}\n\nconsole.log('Raw ESG AI Response:', rawResponse);\n\n// More comprehensive cleaning of the response\nlet cleanJSON = rawResponse\n  .replace(/```json\\n?/gi, '')        // Remove json code blocks (case insensitive)\n  .replace(/```\\n?/g, '')             // Remove closing code blocks\n  .replace(/^[^{]*({.*})[^}]*$/s, '$1') // Extract JSON object if surrounded by text\n  .replace(/^\\s+|\\s+$/g, '')          // Remove leading/trailing whitespace\n  .trim();\n\nconsole.log('Cleaned ESG JSON:', cleanJSON);\n\n// Try to parse the cleaned JSON\ntry {\n  const parsedData = JSON.parse(cleanJSON);\n  \n  console.log('Parsed ESG Data:', parsedData);\n  \n  // Validate required fields\n  if (!parsedData.application_id || !parsedData.decision) {\n    throw new Error('Missing required fields: application_id or decision');\n  }\n  \n  // Extract and validate the ESG assessment data with minimal processing\n  const result = {\n    application_id: parsedData.application_id || 'unknown',\n    assessment_id: parsedData.assessment_id || null,\n    decision: (parsedData.decision || '').toUpperCase(),\n    confidence_level: Math.min(Math.max(parseInt(parsedData.confidence_level) || 0, 0), 100),\n    \n    // ESG Scores - just validate they're numbers\n    environment_score: parseInt(parsedData.environment_score) || 0,\n    social_score: parseInt(parsedData.social_score) || 0,\n    governance_score: parseInt(parsedData.governance_score) || 0,\n    stability_score: parseInt(parsedData.stability_score) || 0,\n    overall_esg_score: parseInt(parsedData.overall_esg_score) || 0,\n    \n    // Assessment Details - just pass through\n    score_reasoning: parsedData.score_reasoning || 'No reasoning provided',\n    \n    // Assessment Summary - just pass arrays through\n    strengths: Array.isArray(parsedData.assessment_summary?.strengths) ? \n               parsedData.assessment_summary.strengths : [],\n    areas_for_improvement: Array.isArray(parsedData.assessment_summary?.areas_for_improvement) ? \n                          parsedData.assessment_summary.areas_for_improvement : [],\n    overall_rating: parsedData.assessment_summary?.overall_rating || 'Not rated',\n    \n    // Metadata\n    processed_at: parsedData.processed_at || new Date().toISOString(),\n    timestamp: new Date().toISOString(),\n    originalResponse: rawResponse,\n    processingStatus: 'SUCCESS'\n  };\n  \n  // Validate decision values\n  const validDecisions = ['ACCEPT', 'REVIEW', 'REJECT'];\n  if (!validDecisions.includes(result.decision)) {\n    console.warn(`Invalid ESG decision: ${result.decision}, defaulting to REVIEW`);\n    result.decision = 'REVIEW';\n  }\n  \n  console.log('Final ESG Result:', result);\n  return [{ json: result }];\n  \n} catch (error) {\n  console.error('ESG Parse Error:', error.message);\n  console.error('Raw Response that failed:', rawResponse);\n  \n  // Try to extract application_id from the original response for better tracking\n  let application_id = 'parse_error';\n  try {\n    const idMatch = rawResponse.match(/\"application_id\":\\s*\"([^\"]+)\"/);\n    if (idMatch) {\n      application_id = idMatch[1];\n    }\n  } catch (e) {\n    // Ignore extraction errors\n  }\n  \n  // If parsing fails, return comprehensive error info\n  return [{\n    json: {\n      application_id: application_id,\n      assessment_id: null,\n      decision: 'ERROR',\n      confidence_level: 0,\n      \n      // Set all ESG scores to 0 on error\n      environment_score: 0,\n      social_score: 0,\n      governance_score: 0,\n      stability_score: 0,\n      overall_esg_score: 0,\n      \n      score_reasoning: `ESG assessment parsing failed: ${error.message}`,\n      \n      // Assessment Summary on error\n      strengths: [],\n      areas_for_improvement: ['ESG assessment could not be processed', 'Manual review required'],\n      overall_rating: 'Error in processing',\n      \n      processed_at: new Date().toISOString(),\n      timestamp: new Date().toISOString(),\n      originalResponse: rawResponse,\n      processingStatus: 'PARSE_ERROR',\n      error: {\n        message: error.message,\n        rawResponseLength: rawResponse.length,\n        cleanedJSON: cleanJSON.substring(0, 500)\n      }\n    }\n  }];\n}"
+      },
+      "id": "d81955a2-4fa0-4c61-8959-87bf4bc31bd7",
+      "name": "Parse ESG Agent Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        912
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "ACCEPT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "2ba31437-ec5e-4874-b706-c410f9153b65"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ACCEPT"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b6f4b673-0cae-4ca3-9d56-1c2ba21ce36d",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "REVIEW",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "REVIEW"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b51e0327-1bf9-4abf-8057-62c76f12673d",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "REJECT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "REJECT"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1248,
+        896
+      ],
+      "id": "71e56f39-3fc2-4aeb-abd4-dcb823418d2b",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "esg_assessments",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.assessment_id }}"
+            },
+            {
+              "keyName": "application_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.application_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "esg_score",
+              "fieldValue": "={{ $json.overall_esg_score }}"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ $json.processed_at }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.decision }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        736
+      ],
+      "id": "fa7e607b-f50b-45db-838c-6f58c7a2d499",
+      "name": "ACCEPT ESG",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "esg_assessments",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.assessment_id }}"
+            },
+            {
+              "keyName": "application_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.application_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "esg_score",
+              "fieldValue": "={{ $json.overall_esg_score }}"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ $json.processed_at }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.decision }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        944
+      ],
+      "id": "ca5e13af-158d-4afa-8b4b-2c6c0fbcdcc8",
+      "name": "REVIEW ESG",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "esg_assessments",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.assessment_id }}"
+            },
+            {
+              "keyName": "application_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.application_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "esg_score",
+              "fieldValue": "={{ $json.overall_esg_score }}"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ $json.processed_at }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.decision }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        1136
+      ],
+      "id": "00617fa3-89a0-4fa1-b396-297311e03334",
+      "name": "REJECT ESG",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "asset-declaration",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c8e39fa8-3d71-4ea5-9fd0-03431117f89c",
+      "name": "Asset Declaration Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        1440
+      ],
+      "webhookId": "8c589267-29fc-4cb4-a587-e8f55b70b4d1"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"application_id\": \"{{ $json.body.assetData.application_id }}\",\n  \"asset_name\": \"{{ $json.body.assetData.asset_name }}\",\n  \"category\": \"{{ $json.body.assetData.category }}\",\n  \"estimated_value\": \"{{ $json.body.assetData.estimated_value }}\",\n  \"condition\": \"{{ $json.body.assetData.condition }}\",\n  \"age\": \"{{ $json.body.assetData.age }}\",\n  \"description\":\"{{ $json.body.assetData.description }}\",\n  \"created_at\": \"{{ $json.body.assetData.created_at }}\",\n  \"updated_at\": \"{{ $json.body.assetData.updated_at }}\"\n\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -464,
+        1424
+      ],
+      "id": "bc242420-8ab0-4c76-8dac-348f832c4eaa",
+      "name": "Format Asset Data"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "preloan_applications",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.application_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "esg_completed",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1904,
+        736
+      ],
+      "id": "7bc83a06-e430-45ce-85c6-cc600266669c",
+      "name": "ESG Completed",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        224,
+        1184
+      ],
+      "id": "4d72c85d-88ed-4182-a237-f2f1c0836005",
+      "name": "Acknowledge Asset Declaration"
+    },
+    {
+      "parameters": {
+        "tableId": "asset_declaration",
+        "dataToSend": "autoMapInputData"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        32,
+        1424
+      ],
+      "id": "08217df8-4ef6-4229-b210-9f364eff1fd0",
+      "name": "Asset Declared",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        272,
+        1664
+      ],
+      "id": "6b15b381-eda6-4459-871b-ee39dce89a19",
+      "name": "Google Gemini Chat Model3",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "9B1XkywQEBRJIyS3",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Asset Research & Risk Agent — Robust JSON Parser (n8n Function node)\n\n// 1) Ingest & normalize various shapes\nconst input = $input.all()[0]?.json ?? $json;\n\nlet rawResponse = '';\nif (input?.output) rawResponse = input.output;\nelse if (input?.response) rawResponse = input.response;\nelse if (input?.content) rawResponse = input.content;\nelse if (Array.isArray(input) && input[0]?.output) rawResponse = input[0].output;\nelse if (typeof input === 'string') rawResponse = input;\nelse rawResponse = JSON.stringify(input);\n\nconsole.log('Raw Asset Agent Response:', rawResponse);\n\n// 2) Clean up common wrappers (code fences, stray text before/after JSON)\nlet cleanJSON = rawResponse\n  // remove ```json / ``` and optional newlines\n  .replace(/```json\\s*/gi, '')\n  .replace(/```\\s*/g, '')\n  // extract the outermost {...} if text surrounds it\n  .replace(/^[\\s\\S]*?({[\\s\\S]*})[\\s\\S]*$/m, '$1')\n  .trim();\n\nconsole.log('Cleaned Asset JSON:', cleanJSON);\n\n// 3) Safe helpers\nconst toNum = (v, def = 0) => {\n  const n = typeof v === 'string' && v.trim() === '' ? NaN : Number(v);\n  return Number.isFinite(n) ? n : def;\n};\n\nconst toPct = (v, def = 0) => {\n  const n = toNum(v, def);\n  // allow 0–100 or 0–1; auto-scale if it looks like 0–1\n  if (n >= 0 && n <= 1) return Math.round(n * 100);\n  return Math.min(Math.max(Math.round(n), 0), 100);\n};\n\n// 4) Parse with error handling\nlet parsed;\ntry {\n  parsed = JSON.parse(cleanJSON);\n} catch (err) {\n  console.error('Parse Error:', err.message);\n\n  // try to salvage application_id for traceability\n  let application_id = 'parse_error';\n  try {\n    const idMatch = rawResponse.match(/\"application_id\"\\s*:\\s*\"([^\"]+)\"/);\n    if (idMatch) application_id = idMatch[1];\n  } catch (_) {}\n\n  return [{\n    json: {\n      application_id,\n      processingStatus: 'PARSE_ERROR',\n      error: {\n        message: err.message,\n        rawResponseLength: rawResponse.length,\n        cleanedJSONPreview: cleanJSON.slice(0, 500)\n      },\n      originalResponse: rawResponse,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// 5) Validate minimal required fields (tune as needed)\nif (!parsed.application_id || !parsed.asset_name || !parsed.category) {\n  return [{\n    json: {\n      application_id: parsed.application_id ?? 'missing_application_id',\n      processingStatus: 'VALIDATION_ERROR',\n      error: {\n        message: 'Missing required fields: application_id, asset_name, or category',\n        presentKeys: Object.keys(parsed || {})\n      },\n      originalResponse: rawResponse,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// 6) Build a clean, typed result (flat schema)\nconst result = {\n  // ids & input echo\n  application_id: parsed.application_id,\n  asset_name: parsed.asset_name ?? null,\n  category: parsed.category ?? null,\n  estimated_value_declared: parsed.estimated_value_declared ?? null,\n  condition: parsed.condition ?? null,\n  age: parsed.age ?? null,\n  description: parsed.description ?? null,\n\n  // normalized identifiers\n  brand: parsed.brand ?? null,\n  model: parsed.model ?? null,\n  variant: parsed.variant ?? null,\n  year_or_release: parsed.year_or_release ?? null,\n\n  // market summary\n  market_price_range: parsed.market_price_range ?? null,\n  price_min: toNum(parsed.price_min),\n  price_max: toNum(parsed.price_max),\n  price_median: toNum(parsed.price_median),\n  price_mean: toNum(parsed.price_mean),\n  price_trimmed_mean: toNum(parsed.price_trimmed_mean),\n  price_stddev: toNum(parsed.price_stddev),\n  num_comparables: toNum(parsed.num_comparables),\n  demand_trend: parsed.demand_trend ?? null,\n  seasonality_notes: parsed.seasonality_notes ?? null,\n  location_sensitivity: parsed.location_sensitivity ?? null,\n  recent_price_momentum: parsed.recent_price_momentum ?? null,\n\n  // comparables (pass-through array if valid)\n  comparables: Array.isArray(parsed.comparables) ? parsed.comparables : [],\n\n  // collateral suitability & risks\n  liquidity: parsed.liquidity ?? null,\n  expected_days_on_market_normal: parsed.expected_days_on_market_normal ?? null,\n  expected_days_on_market_quick: parsed.expected_days_on_market_quick ?? null,\n  depreciation_rate_annual_pct: toPct(parsed.depreciation_rate_annual_pct),\n  obsolescence_risk: parsed.obsolescence_risk ?? null,\n  fraud_theft_risk: parsed.fraud_theft_risk ?? null,\n  counterfeit_red_flags: Array.isArray(parsed.counterfeit_red_flags) ? parsed.counterfeit_red_flags : [],\n  maintenance_repair_risk: parsed.maintenance_repair_risk ?? null,\n  parts_availability: parsed.parts_availability ?? null,\n  documentation_required: Array.isArray(parsed.documentation_required) ? parsed.documentation_required : [],\n  regulatory_notes: parsed.regulatory_notes ?? null,\n\n  // seller strategy & costs\n  recommended_list_price: toNum(parsed.recommended_list_price),\n  recommended_quick_sale_price: toNum(parsed.recommended_quick_sale_price),\n  negotiation_buffer_pct: toPct(parsed.negotiation_buffer_pct),\n  best_resale_channels: Array.isArray(parsed.best_resale_channels) ? parsed.best_resale_channels : [],\n  refurbish_cost_est: toNum(parsed.refurbish_cost_est),\n  repair_cost_est: toNum(parsed.repair_cost_est),\n  transport_cost_est: toNum(parsed.transport_cost_est),\n  platform_fee_est: toNum(parsed.platform_fee_est),\n  misc_cost_est: toNum(parsed.misc_cost_est),\n  total_transaction_cost_est: toNum(parsed.total_transaction_cost_est),\n  notes_for_profitable_sale: parsed.notes_for_profitable_sale ?? null,\n\n  // SWOT (flat arrays)\n  swot_strengths: Array.isArray(parsed.swot_strengths) ? parsed.swot_strengths : [],\n  swot_weaknesses: Array.isArray(parsed.swot_weaknesses) ? parsed.swot_weaknesses : [],\n  swot_opportunities: Array.isArray(parsed.swot_opportunities) ? parsed.swot_opportunities : [],\n  swot_threats: Array.isArray(parsed.swot_threats) ? parsed.swot_threats : [],\n\n  // handoff hints to valuation\n  category_guideline_ltv_band_pct: parsed.category_guideline_ltv_band_pct ?? null,\n  suggested_conservative_value_basis: parsed.suggested_conservative_value_basis ?? null,\n  basis_adjustments: Array.isArray(parsed.basis_adjustments) ? parsed.basis_adjustments : [],\n  recommended_basis_value: toNum(parsed.recommended_basis_value),\n  data_quality_issues: Array.isArray(parsed.data_quality_issues) ? parsed.data_quality_issues : [],\n  confidence: toNum(parsed.confidence, 0.0), // keep as 0–1 or 0–100; your choice—here we return raw number\n\n  // meta\n  data_sources: Array.isArray(parsed.data_sources) ? parsed.data_sources : [],\n  currency: parsed.currency ?? 'PHP',\n  timestamp_utc: parsed.timestamp_utc ?? null,\n\n  processingStatus: 'SUCCESS',\n  originalResponse: rawResponse,\n  processed_at: new Date().toISOString()\n};\n\n// 7) Return as a single item for downstream nodes\nreturn [{ json: result }];\n"
+      },
+      "id": "d5dce614-1c89-4c8f-b1b7-9696ad6418ae",
+      "name": "Parse ESG Agent Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        1424
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an Asset Research & Risk Analysis Agent specializing in MOVABLE ASSET FINANCING in the Philippines.\n\nYour job: do a deep dive on the asset, focusing on PH marketplaces, seller profitability, and collateral suitability. Be precise, conservative, and cite concrete comparables.\n\nIMPORTANT RULES\n- Work in Philippine context and PHP currency.\n- When uncertain, estimate and mark low confidence.\n- Return ONLY a single valid JSON object. No prose, no markdown, no code fences.\n\n### Input (from workflow)\napplication_id: {{ $json.application_id }}\nasset_name: {{ $json.asset_name }}\ncategory: {{ $json.category }}\nestimated_value: {{ $json.estimated_value }}\ncondition: {{ $json.condition }}\nage: {{ $json.age }}\ndescription: {{ $json.description }}\n\n### Tasks\n1) Market Research\n- Search PH second-hand marketplaces (Carousell, Facebook Marketplace, OLX, Lazada/Shopee for small goods, AutoDeal for vehicles, pawnshops for jewelry, etc.).\n- Collect 6–15 CLOSE comparables (same brand/model/variant; adjust for condition/age).\n- Summarize price stats and demand (fast/slow), note seasonality and location effects.\n\n2) Collateral Suitability & Risks\n- Liquidity (ease of sale in PH), depreciation risk, theft/fraud/counterfeit risk, maintenance/repair risk, parts availability, obsolescence/tech risk.\n- Regulatory/docs: e.g., LTO (vehicles), serial numbers, receipts, warranty cards, certificates, pawnshop norms (jewelry).\n- Provide SWOT.\n\n3) Seller-Profitability Lens\n- Suggest profitable **list price** and **expected days-on-market**.\n- Recommend quick-sale price vs hold-for-price strategy.\n- Estimate transaction/holding costs (refurbish, repairs, transport, listing fees).\n- Note best resale channels in PH.\n\n4) Output\nReturn ONLY this flat JSON schema:\n\n{\n  \"application_id\": \"{{ $json.application_id }}\",\n  \"asset_name\": \"{{ $json.asset_name }}\",\n  \"category\": \"{{ $json.category }}\",\n  \"estimated_value_declared\": \"{{ $json.estimated_value }}\",\n  \"condition\": \"{{ $json.condition }}\",\n  \"age\": \"{{ $json.age }}\",\n  \"description\": \"{{ $json.description }}\",\n\n  \"brand\": \"<string|null>\",\n  \"model\": \"<string|null>\",\n  \"variant\": \"<string|null>\",\n  \"year_or_release\": \"<string|null>\",\n\n  \"market_price_range\": \"₱XX,XXX–₱YY,YYY\",\n  \"price_min\": 0,\n  \"price_max\": 0,\n  \"price_median\": 0,\n  \"price_mean\": 0,\n  \"price_trimmed_mean\": 0,\n  \"price_stddev\": 0,\n  \"num_comparables\": 0,\n  \"demand_trend\": \"high|medium|low\",\n  \"seasonality_notes\": \"<string>\",\n  \"location_sensitivity\": \"<string>\",\n  \"recent_price_momentum\": \"rising|flat|falling\",\n\n  \"comparables\": [\n    {\n      \"title\": \"<listing title>\",\n      \"source\": \"Carousell|FB Marketplace|OLX|AutoDeal|Shopee|Other\",\n      \"url\": \"<https://...>\",\n      \"price\": 0,\n      \"location\": \"<city/province>\",\n      \"date_seen\": \"<YYYY-MM-DD>\",\n      \"condition\": \"<new|like new|good|fair|for parts>\",\n      \"age\": \"<e.g., 3 years>\",\n      \"notes\": \"<short adjustments or differences>\"\n    }\n  ],\n\n  \"liquidity\": \"high|medium|low\",\n  \"expected_days_on_market_normal\": \"<e.g., 14-30 days>\",\n  \"expected_days_on_market_quick\": \"<e.g., 3-7 days>\",\n  \"depreciation_rate_annual_pct\": 0,\n  \"obsolescence_risk\": \"low|medium|high\",\n  \"fraud_theft_risk\": \"low|medium|high\",\n  \"counterfeit_red_flags\": [\"<string>\", \"...\"],\n  \"maintenance_repair_risk\": \"low|medium|high\",\n  \"parts_availability\": \"good|limited|scarce\",\n  \"documentation_required\": [\"<OR/CR, receipt, warranty, certificate>\", \"...\"],\n  \"regulatory_notes\": \"<string>\",\n\n  \"recommended_list_price\": 0,\n  \"recommended_quick_sale_price\": 0,\n  \"negotiation_buffer_pct\": 0,\n  \"best_resale_channels\": [\"Carousell\",\"FB Marketplace\",\"Pawnshop\",\"AutoDeal\"],\n  \"refurbish_cost_est\": 0,\n  \"repair_cost_est\": 0,\n  \"transport_cost_est\": 0,\n  \"platform_fee_est\": 0,\n  \"misc_cost_est\": 0,\n  \"total_transaction_cost_est\": 0,\n  \"notes_for_profitable_sale\": \"<short bullet-style text>\",\n\n  \"swot_strengths\": [\"<string>\", \"...\"],\n  \"swot_weaknesses\": [\"<string>\", \"...\"],\n  \"swot_opportunities\": [\"<string>\", \"...\"],\n  \"swot_threats\": [\"<string>\", \"...\"],\n\n  \"category_guideline_ltv_band_pct\": \"<e.g., Vehicles 60–80>\",\n  \"suggested_conservative_value_basis\": \"lower_bound|median|trimmed_mean\",\n  \"basis_adjustments\": [\n    {\"reason\": \"<age/condition/docs/market>\", \"pct\": -10}\n  ],\n  \"recommended_basis_value\": 0,\n  \"data_quality_issues\": [\"<string>\", \"...\"],\n  \"confidence\": 0.0,\n\n  \"data_sources\": [\"<source names>\"],\n  \"currency\": \"PHP\",\n  \"timestamp_utc\": \"<YYYY-MM-DDTHH:mm:ssZ>\"\n}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        352,
+        1424
+      ],
+      "id": "5a5ab188-eddb-43ee-ba9a-b97baee90557",
+      "name": "Asset Researcher Agent"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an Asset Valuation Agent specializing in MOVABLE ASSET FINANCING in the Philippines.  \nYou receive structured research data from another agent and must decide a **conservative but fair valuation price** for the asset.  \n\n### Input (from previous agent)\napplication_id: {{ $json.application_id }}\nasset_name: {{ $json.asset_name }}\ncategory: {{ $json.category }}\nbrand: {{ $json.brand }}\nmodel: {{ $json.model }}\nvariant: {{ $json.variant }}\nyear_or_release: {{ $json.year_or_release }}\ncondition: {{ $json.condition }}\nage: {{ $json.age }}\nestimated_value_declared: {{ $json.estimated_value_declared }}\nmarket_price_range: {{ $json.market_price_range }}\nprice_min: {{ $json.price_min }}\nprice_max: {{ $json.price_max }}\nprice_median: {{ $json.price_median }}\nprice_mean: {{ $json.price_mean }}\nprice_trimmed_mean: {{ $json.price_trimmed_mean }}\nliquidity: {{ $json.liquidity }}\ndepreciation_rate_annual_pct: {{ $json.depreciation_rate_annual_pct }}\nobsolescence_risk: {{ $json.obsolescence_risk }}\nfraud_theft_risk: {{ $json.fraud_theft_risk }}\nmaintenance_repair_risk: {{ $json.maintenance_repair_risk }}\nparts_availability: {{ $json.parts_availability }}\nrecommended_list_price: {{ $json.recommended_list_price }}\nrecommended_quick_sale_price: {{ $json.recommended_quick_sale_price }}\nsuggested_conservative_value_basis: {{ $json.suggested_conservative_value_basis }}\nrecommended_basis_value: {{ $json.recommended_basis_value }}\nconfidence: {{ $json.confidence }}\n\n### Tasks\n1. **Valuation Price**\n   - Start with the recommended_basis_value or price_median.  \n   - Adjust downward for:  \n     - High depreciation rate  \n     - Older age / poor condition  \n     - High fraud/theft risk  \n     - Low liquidity or resale difficulty  \n   - Ensure valuation_price is **≤ declared estimated value** and within market_price_range.  \n   - If confidence < 0.7, lean to lower bound.  \n\n2. **Decision Rationale**\n   - Explain how valuation_price was determined.  \n   - Include adjustments (e.g., age, risk, liquidity).  \n   - Keep it short and practical.\n\n### Output\nReturn ONLY a valid JSON object:\nMake sure the application_id being outputted is correct (important).\n\n{\n  \"application_id\": \"{{ $json.application_id }}\",\n  \"asset_name\": \"{{ $json.asset_name }}\",\n  \"category\": \"{{ $json.category }}\",\n  \"brand\": \"{{ $json.brand }}\",\n  \"model\": \"{{ $json.model }}\",\n  \"valuation_price\": 0,\n  \"confidence\": {{ $json.confidence }},\n  \"rationale\": \"<short explanation of adjustments and conservative assumptions>\",\n  \"processingStatus\": \"SUCCESS\",\n  \"timestamp\": \"<YYYY-MM-DDTHH:mm:ssZ>\"\n}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1088,
+        1424
+      ],
+      "id": "edecb40f-2be4-4fb8-8715-cfd8d4a697c3",
+      "name": "Asset Valuation Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        1648
+      ],
+      "id": "757ac80a-9b25-45b7-a145-942c9bbf77c4",
+      "name": "Google Gemini Chat Model4",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "9B1XkywQEBRJIyS3",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Valuation Agent — Robust JSON Parser (n8n Function node)\n\n// Helpers\nconst extractFirstJsonObject = (text) => {\n  // Strip code fences\n  let s = String(text || '')\n    .replace(/```json\\s*/gi, '')\n    .replace(/```\\s*/g, '')\n    .trim();\n\n  // Try to isolate the first {...} block if extra text exists\n  const match = s.match(/{[\\s\\S]*}/m);\n  if (match) s = match[0];\n\n  return s.trim();\n};\n\nconst toNumber = (v, def = 0) => {\n  if (v === null || v === undefined) return def;\n  const n = Number(v);\n  return Number.isFinite(n) ? n : def;\n};\n\nconst normalizeConfidence = (v) => {\n  // Accept 0–1 or 0–100; normalize to 0–1 float\n  if (v === null || v === undefined || v === '') return null;\n  const n = Number(v);\n  if (!Number.isFinite(n)) return null;\n  if (n > 1) return Math.max(0, Math.min(1, n / 100)); // 85 -> 0.85\n  return Math.max(0, Math.min(1, n));                  // 0.85 -> 0.85\n};\n\nconst parseOne = (rawCarrier) => {\n  // rawCarrier can be an item.json or an inner array/object\n  let rawResponse = '';\n\n  // Common shapes\n  if (rawCarrier?.output) rawResponse = rawCarrier.output;\n  else if (rawCarrier?.response) rawResponse = rawCarrier.response;\n  else if (rawCarrier?.content) rawResponse = rawCarrier.content;\n  else if (Array.isArray(rawCarrier) && rawCarrier[0]?.output) rawResponse = rawCarrier[0].output;\n  else if (typeof rawCarrier === 'string') rawResponse = rawCarrier;\n  else rawResponse = JSON.stringify(rawCarrier ?? '');\n\n  // Clean & extract JSON\n  const cleanJSON = extractFirstJsonObject(rawResponse);\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleanJSON);\n  } catch (err) {\n    // Try to salvage application_id for traceability\n    let application_id = 'parse_error';\n    try {\n      const idMatch = rawResponse.match(/\"application_id\"\\s*:\\s*\"([^\"]+)\"/);\n      if (idMatch) application_id = idMatch[1];\n    } catch (_) {}\n\n    return {\n      json: {\n        application_id,\n        processingStatus: 'PARSE_ERROR',\n        error: {\n          message: err.message,\n          rawResponseLength: rawResponse.length,\n          cleanedJSONPreview: cleanJSON.slice(0, 500),\n        },\n        originalResponse: rawResponse,\n        timestamp: new Date().toISOString(),\n      }\n    };\n  }\n\n  // Validate minimal fields\n  const application_id = parsed.application_id ?? 'missing_application_id';\n  const valuation_price = toNumber(parsed.valuation_price, NaN);\n\n  if (!parsed.application_id || !Number.isFinite(valuation_price)) {\n    return {\n      json: {\n        application_id,\n        processingStatus: 'VALIDATION_ERROR',\n        error: {\n          message: 'Missing required fields: application_id or valuation_price',\n          presentKeys: Object.keys(parsed || {}),\n        },\n        originalResponse: rawResponse,\n        timestamp: new Date().toISOString(),\n      }\n    };\n  }\n\n  // Normalize confidence to 0–1 (nullable if not provided)\n  const confidenceNorm = normalizeConfidence(parsed.confidence);\n\n  // Build clean result\n  const result = {\n    application_id,\n    asset_name: parsed.asset_name ?? null,\n    category: parsed.category ?? null,\n    brand: parsed.brand ?? null,\n    model: parsed.model ?? null,\n\n    valuation_price: Math.round(valuation_price), // keep as integer pesos\n    confidence: confidenceNorm,                   // 0–1 float or null\n    rationale: parsed.rationale ?? null,\n\n    processingStatus: parsed.processingStatus ?? 'SUCCESS',\n    timestamp: parsed.timestamp ?? new Date().toISOString(),\n\n    // Useful for auditing/debug\n    originalResponse: rawResponse,\n    processed_at: new Date().toISOString(),\n  };\n\n  return { json: result };\n};\n\n// MAIN: process all incoming n8n items\nconst items = $input.all();\n\n// If your upstream node outputs exactly the sample array as a single item,\n// we still handle it gracefully by attempting both item.json and inner array.\nconst out = [];\n\nfor (const item of items) {\n  // Prefer item.json; if it itself is the sample array, parse that too\n  const payload = item?.json;\n\n  if (Array.isArray(payload) && payload.length && payload[0]?.output) {\n    // Case: item.json is the array you pasted\n    out.push(parseOne(payload));\n  } else {\n    // Typical case: response is at item.json.output (or siblings)\n    out.push(parseOne(payload));\n  }\n}\n\nreturn out;\n"
+      },
+      "id": "e2b987d4-1e83-447d-b62f-71479ea87dac",
+      "name": "Parse ESG Agent Response2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        1424
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "preloan_applications",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $('Format Asset Data').item.json.application_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        1424
+      ],
+      "id": "4cc866eb-1a29-448d-93e3-7e5fbe10c975",
+      "name": "Get Loan Application Details",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an LTV (Loan-to-Value) Agent specializing in MOVABLE ASSET FINANCING in the Philippines.  \nYou receive the asset’s valuation results and loan request details, and your task is to calculate safe LTV metrics and assess if the loan request is within acceptable financing guidelines.  \n\n### Input\napplication_id:{{ $('Format Asset Data').item.json.application_id }}\nasset_name:{{ $('Parse ESG Agent Response2').item.json.asset_name }}\ncategory: {{ $('Parse ESG Agent Response2').item.json.category }}\nbrand: {{ $('Parse ESG Agent Response2').item.json.brand }}\nmodel: {{ $('Parse ESG Agent Response2').item.json.model }}\nvaluation_price: {{ $('Parse ESG Agent Response2').item.json.valuation_price }}\nconfidence: {{ $('Parse ESG Agent Response2').item.json.confidence }}\nrationale:{{ $('Parse ESG Agent Response2').item.json.rationale }} \nloan_amount_requested: {{ $json.loan_amount }}\nloan_tenor_months: {{ $json.loan_tenor_months }}\n\n### Task\n1. **Determine Category Guideline LTV Band**  \n   - Vehicles: 60–80%  \n   - Business Equipment: 50–70%  \n   - Electronics/Home Appliances: 30–50%  \n   - Furniture: 20–40%  \n   - Jewelry: 60–85%  \n   - Musical Instruments: 40–60%  \n   - Sports Equipment: 30–50%  \n   - Other: conservative band (30–50%)  \n\n2. **Select Recommended LTV Ratio**  \n   - Start near the midpoint of the band.  \n   - Adjust downward if confidence < 0.7, high depreciation, high fraud/theft risk, or low liquidity.  \n   - Adjust upward only if liquidity is high, confidence ≥ 0.85, and collateral is strong.  \n\n3. **Calculate Loanable Amount**  \n   - loanable_amount = valuation_price × chosen LTV ratio  \n   - Round loanable_amount to the nearest ₱500  \n\n4. **Compare Requested Loan**  \n   - Flag whether the requested loan_amount fits within the safe loanable_amount.  \n   - If requested amount > loanable_amount, suggest a revised safe amount.  \n\n5. **Assess Tenor Suitability**  \n   - Shorter tenors (≤12 months) → lower risk tolerance → allow upper LTV in band.  \n   - Longer tenors (>24 months) → higher risk → use lower end of band.  \n\n6. **Decision Output**  \n   - Provide recommended LTV ratio, safe loanable amount, comparison vs requested loan, and a concise rationale.\n\n### Output\nReturn ONLY a valid JSON object:\n\n{\n  \"application_id\": \"{{ $('Parse ESG Agent Response2').item.json.application_id }}\",\n  \"asset_name\": \"{{ $('Parse ESG Agent Response2').item.json.asset_name }}\",\n  \"category\": \"{{ $('Parse ESG Agent Response2').item.json.category }}\",\n  \"brand\": \"{{ $('Parse ESG Agent Response2').item.json.brand }}\",\n  \"model\": \"{{ $('Parse ESG Agent Response2').item.json.model }}\",\n  \"valuation_price\": {{ $('Parse ESG Agent Response2').item.json.valuation_price }},\n  \"confidence\": {{ $('Parse ESG Agent Response2').item.json.confidence }},\n  \"loan_amount_requested\": {{ $json.loan_amount }},\n  \"loan_tenor_months\": {{ $json.loan_tenor_months }},\n  \"category_guideline_ltv_band_pct\": \"e.g., 60–80%\",\n  \"recommended_ltv_ratio_pct\": 0,\n  \"loanable_amount\": 0,\n  \"loan_request_fit\": \"ACCEPTABLE | ABOVE_LIMIT | BELOW_SAFE_THRESHOLD\",\n  \"safe_recommended_loan_amount\": 0,\n  \"rationale\": \"<short explanation of LTV selection, tenor impact, and comparison to requested loan>\",\n  \"processingStatus\": \"SUCCESS\",\n  \"timestamp\": \"<YYYY-MM-DDTHH:mm:ssZ>\"\n}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        2000,
+        1424
+      ],
+      "id": "9e230575-7be0-45d8-8b08-1a11bab13091",
+      "name": "LTV Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1872,
+        1632
+      ],
+      "id": "6350c3ed-234d-4e44-be6b-10ed645fa227",
+      "name": "Google Gemini Chat Model5",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "9B1XkywQEBRJIyS3",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "preloan_applications",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Format Asset Data').item.json.application_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "assets_completed",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2640,
+        1424
+      ],
+      "id": "7a1cda7b-cdf3-4dd1-bbeb-8cb03b73bea8",
+      "name": "Asset Valuation Completed",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// LTV Agent — Robust JSON Parser (n8n Function node)\n\n// Helper: extract JSON from code fences or extra text\nconst extractFirstJsonObject = (text) => {\n  let s = String(text || '')\n    .replace(/```json\\s*/gi, '')\n    .replace(/```\\s*/g, '')\n    .trim();\n\n  const match = s.match(/{[\\s\\S]*}/m);\n  if (match) s = match[0];\n\n  return s.trim();\n};\n\nconst toNumber = (v, def = 0) => {\n  if (v === null || v === undefined) return def;\n  const n = Number(v);\n  return Number.isFinite(n) ? n : def;\n};\n\nconst parseOne = (rawCarrier) => {\n  let rawResponse = '';\n\n  // Common cases\n  if (rawCarrier?.output) rawResponse = rawCarrier.output;\n  else if (rawCarrier?.response) rawResponse = rawCarrier.response;\n  else if (rawCarrier?.content) rawResponse = rawCarrier.content;\n  else if (Array.isArray(rawCarrier) && rawCarrier[0]?.output) rawResponse = rawCarrier[0].output;\n  else if (typeof rawCarrier === 'string') rawResponse = rawCarrier;\n  else rawResponse = JSON.stringify(rawCarrier ?? '');\n\n  const cleanJSON = extractFirstJsonObject(rawResponse);\n\n  let parsed;\n  try {\n    parsed = JSON.parse(cleanJSON);\n  } catch (err) {\n    let application_id = 'parse_error';\n    try {\n      const idMatch = rawResponse.match(/\"application_id\"\\s*:\\s*\"([^\"]+)\"/);\n      if (idMatch) application_id = idMatch[1];\n    } catch (_) {}\n\n    return {\n      json: {\n        application_id,\n        processingStatus: 'PARSE_ERROR',\n        error: {\n          message: err.message,\n          rawResponseLength: rawResponse.length,\n          cleanedJSONPreview: cleanJSON.slice(0, 500),\n        },\n        originalResponse: rawResponse,\n        timestamp: new Date().toISOString(),\n      }\n    };\n  }\n\n  // Minimal validation\n  if (!parsed.application_id || !parsed.valuation_price) {\n    return {\n      json: {\n        application_id: parsed.application_id ?? 'missing_application_id',\n        processingStatus: 'VALIDATION_ERROR',\n        error: {\n          message: 'Missing required fields: application_id or valuation_price',\n          presentKeys: Object.keys(parsed || {}),\n        },\n        originalResponse: rawResponse,\n        timestamp: new Date().toISOString(),\n      }\n    };\n  }\n\n  // Build clean normalized result\n  const result = {\n    application_id: parsed.application_id,\n    asset_name: parsed.asset_name ?? null,\n    category: parsed.category ?? null,\n    brand: parsed.brand ?? null,\n    model: parsed.model ?? null,\n\n    valuation_price: toNumber(parsed.valuation_price),\n    confidence: toNumber(parsed.confidence, null),\n    loan_amount_requested: toNumber(parsed.loan_amount_requested),\n    loan_tenor_months: toNumber(parsed.loan_tenor_months),\n\n    category_guideline_ltv_band_pct: parsed.category_guideline_ltv_band_pct ?? null,\n    recommended_ltv_ratio_pct: toNumber(parsed.recommended_ltv_ratio_pct),\n    loanable_amount: toNumber(parsed.loanable_amount),\n    loan_request_fit: parsed.loan_request_fit ?? null,\n    safe_recommended_loan_amount: toNumber(parsed.safe_recommended_loan_amount),\n\n    rationale: parsed.rationale ?? null,\n\n    processingStatus: parsed.processingStatus ?? 'SUCCESS',\n    timestamp: parsed.timestamp ?? new Date().toISOString(),\n\n    // audit trail\n    originalResponse: rawResponse,\n    processed_at: new Date().toISOString(),\n  };\n\n  return { json: result };\n};\n\n// MAIN: process all incoming n8n items\nconst items = $input.all();\nconst out = [];\n\nfor (const item of items) {\n  const payload = item?.json;\n  if (Array.isArray(payload) && payload.length && payload[0]?.output) {\n    out.push(parseOne(payload));\n  } else {\n    out.push(parseOne(payload));\n  }\n}\n\nreturn out;\n"
+      },
+      "id": "f6127766-e6eb-49ce-828f-196c350837d2",
+      "name": "Parse ESG Agent Response3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        1424
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "loan-approval",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "4b3f6159-956c-46fc-b9fe-ef6b4cd0b471",
+      "name": "Officer Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        2048
+      ],
+      "webhookId": "8c589267-29fc-4cb4-a587-e8f55b70b4d1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "asset_declaration",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Asset Declared').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "valuation_price",
+              "fieldValue": "={{ $('Parse ESG Agent Response3').item.json.valuation_price }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $('Parse ESG Agent Response3').item.json.timestamp }}"
+            },
+            {
+              "fieldId": "recommended_ltv_ratio_pct",
+              "fieldValue": "={{ $('Parse ESG Agent Response3').item.json.recommended_ltv_ratio_pct }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        1424
+      ],
+      "id": "20efddc8-e704-48d2-bbd5-1a8360e64a69",
+      "name": "Update Valued Price",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        2144
+      ],
+      "id": "dbcc1ab0-c1bc-448c-899b-7d43d0f69a4a",
+      "name": "Google Gemini Chat Model6",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "9B1XkywQEBRJIyS3",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"application_id\": \"{{ $json.body.applicationId }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -480,
+        2048
+      ],
+      "id": "ecb896bf-7469-4ba6-8899-d2c995b53b1a",
+      "name": "Get Application ID"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -304,
+        1792
+      ],
+      "id": "9f8f7af1-35b0-4113-8dc0-63852b049314",
+      "name": "Acknowledge Loan Plan"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "preloan_applications",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $json.application_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        2048
+      ],
+      "id": "96f17cf6-6d60-41d8-b303-6858bada5c04",
+      "name": "Preloan Details",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "asset_declaration",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "application_id",
+              "keyValue": "={{ $('Get Application ID').item.json.application_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        848,
+        1904
+      ],
+      "id": "31adf76e-798c-4974-aa42-64460e8bb1ba",
+      "name": "Asset Declaration Details",
+      "credentials": {
+        "supabaseApi": {
+          "id": "ooe2aGlStCdmoTlY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.declared_asset }}",
+                    "rightValue": "true",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "empty",
+                      "singleValue": true
+                    },
+                    "id": "2ba31437-ec5e-4874-b706-c410f9153b65"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "YES"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b6f4b673-0cae-4ca3-9d56-1c2ba21ce36d",
+                    "leftValue": "={{ $json.declared_asset }}",
+                    "rightValue": "false",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "NO"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        320,
+        2048
+      ],
+      "id": "ecae3352-6659-4d70-87af-98634bb59fa6",
+      "name": "Declared Asset?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a loan planning assistant for BPI BanKO’s NegosyoKo product.\n\nGOAL\nReturn a compact JSON loan plan. Use flat interest 2.75%/month. Support \"monthly\" or \"weekly\". Provide a short reasoning for transparency.\n\nINPUT (from workflow JSON)\n- application_id: {{ $('Preloan Details').item.json.id }}\n- user_id: {{ $('Preloan Details').item.json.user_id }}\n- principal: {{ $('Preloan Details').item.json.loan_amount }}\n- tenor_months: {{ $('Preloan Details').item.json.loan_tenor_months }}\n- repayment_frequency: {{ $('Preloan Details').item.json.repayment_frequency }}   // \"monthly\" or \"weekly\"\n- loan_purpose: {{ $('Preloan Details').item.json.loan_purpose }}\n\nPOLICY\n- Monthly flat rate r_m = 0.0275\n- Weekly flat rate r_w = r_m * 12 / 52  ≈ 0.006346\n- Periods:\n    monthly → periods = tenor_months\n    weekly → periods = round(tenor_months * 52 / 12)\n- Flat method:\n    total_interest = principal * rate_per_period * periods\n    periodic_payment = (principal + total_interest) / periods\n- Affordability (recommended income):\n    monthly  → recommended_monthly_income = periodic_payment * 4\n    weekly   → recommended_monthly_income = (periodic_payment * 4.333) * 4\n- Round currency to 2 decimals. Output valid JSON only (no prose, no code fences).\n\nOUTPUT (return ONLY this JSON)\n{\n  \"application_id\": \"<string>\",\n  \"user_id\": \"<string>\",\n  \"product\": \"NegosyoKo\",\n  \"principal\": number,\n  \"tenor_months\": number,\n  \"repayment_frequency\": \"monthly\" | \"weekly\",\n  \"rate_per_period\": number,\n  \"loan_purpose\": \"<string>\",\n  \"summary\": {\n    \"periodic_payment\": number,\n    \"total_interest\": number,\n    \"total_payable\": number,\n    \"recommended_monthly_income\": number\n  },\n  \"status\": \"approved\"\n  \"reasoning\": \"<2–4 concise sentences explaining the math and affordability check>\"\n}\n\nSTEPS\n1) Choose rate_per_period (r_m or r_w) and periods.\n2) Compute total_interest, total_payable, periodic_payment.\n3) Compute recommended_monthly_income (per policy).\n4) Return exactly the JSON schema above.\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        2320
+      ],
+      "id": "558387f1-6164-47b5-8bb4-3baf3c05e456",
+      "name": "Loan Offer Agent w/o Asset"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        2592
+      ],
+      "id": "f3208966-5304-41e8-9a13-1b51649400f1",
+      "name": "Google Gemini Chat Model7",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "9B1XkywQEBRJIyS3",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.asset_name }}",
+                    "rightValue": "No assets declared",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "f7cea493-6ce7-4e6f-b48d-31ef32b0900f"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "No Assets"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "84f3d065-e1d2-4b69-a8e7-c239bdd453d6",
+                    "leftValue": "={{ $json.asset_name }}",
+                    "rightValue": "No assets declared",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "With Assets"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -224,
+        1424
+      ],
+      "id": "23bdd444-ccc3-4a76-8ebb-58971815d2c0",
+      "name": "Switch2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "preloan_applications",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.application_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "assets_completed",
+              "fieldValue": "true"
+            },
+            {
+              "fieldId": "declared_asset",
+              "fieldValue": "false"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        1200
+      ],
+      "id": "2e71c068-07ec-47f3-b24e-cd08a62d164c",
+      "name": "Asset Valuation Completed1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// NegosyoKo Loan Plan — Minimal Parser (n8n Function node)\n// Emits ONLY normalized `status` (no status_raw).\n\n// Helper: coerce to number safely\nconst toNum = (v, def = 0) => {\n  const n = typeof v === 'string' && v.trim() === '' ? NaN : Number(v);\n  return Number.isFinite(n) ? n : def;\n};\n\n// Helper: pick first non-empty field from common keys\nconst pickText = (obj, keys = []) => {\n  for (const k of keys) {\n    const v = obj?.[k];\n    if (typeof v === 'string' && v.trim() !== '') return v;\n  }\n  return null;\n};\n\n// Helper: normalize status to enum\nconst normalizeStatus = (val) => {\n  const s = String(val ?? '').trim().toLowerCase();\n\n  if (['approved','approve','accepted','accept'].includes(s)) return 'approved';\n  if (['rejected','reject','declined','decline','cancelled','canceled'].includes(s)) return 'rejected';\n\n  // everything else => non-final enum label\n  return 'pending_documents';\n};\n\n// Parse a single raw response string -> JSON object (or throws)\nconst parseOne = (raw) => {\n  if (raw == null) throw new Error('Empty response');\n\n  const cleaned = String(raw)\n    .replace(/```json\\s*/gi, '')\n    .replace(/```\\s*/g, '')\n    .replace(/^[\\s\\S]*?({[\\s\\S]*})[\\s\\S]*$/m, '$1')\n    .trim();\n\n  return JSON.parse(cleaned);\n};\n\n// Convert one parsed object into a normalized plan row\nconst normalizePlan = (parsed, originalResponse) => {\n  if (!parsed || typeof parsed !== 'object') throw new Error('Parsed object missing');\n\n  const summary = parsed.summary ?? {};\n  const coll = parsed.collateral ?? {};\n  const assets = Array.isArray(coll.assets) ? coll.assets : [];\n\n  // --- status handling (no status_raw emitted) ---\n  const statusSource =\n    parsed.status ??\n    pickText(parsed, ['loan_status','decision','ai_decision']);\n  const statusEnum = normalizeStatus(statusSource);\n\n  // Build output\n  const out = {\n    // identifiers\n    application_id: parsed.application_id ?? 'missing_application_id',\n    user_id: parsed.user_id ?? null,\n    product: parsed.product ?? 'NegosyoKo',\n\n    // core amounts\n    principal_requested: toNum(parsed.principal_requested),\n    principal_approved: toNum(parsed.principal_approved),\n    secured_amount: toNum(parsed.secured_amount),\n    unsecured_amount: toNum(parsed.unsecured_amount),\n\n    // terms\n    tenor_months: toNum(parsed.tenor_months),\n    repayment_frequency: parsed.repayment_frequency ?? 'monthly',\n    rate_per_period: toNum(parsed.rate_per_period),\n    loan_purpose: parsed.loan_purpose ?? null,\n\n    // collateral\n    collateral_total_loanable: toNum(coll.total_collateral_loanable),\n    collateral_assets: assets.map(a => ({\n      asset_name: pickText(a, ['asset_name', 'name']),\n      valuation_price: toNum(a.valuation_price),\n      recommended_ltv_ratio_pct: toNum(a.recommended_ltv_ratio_pct),\n      loanable_amount: toNum(a.loanable_amount),\n    })),\n\n    // summary\n    periodic_payment: toNum(summary.periodic_payment),\n    total_interest: toNum(summary.total_interest),\n    total_payable: toNum(summary.total_payable),\n    recommended_monthly_income: toNum(summary.recommended_monthly_income),\n\n    // final, enum-safe status\n    status: statusEnum,\n\n    // transparency\n    reasoning: parsed.reasoning ?? pickText(parsed, ['explanation','notes','why']) ?? null,\n\n    // derived\n    secured_ratio_pct: (() => {\n      const total = toNum(parsed.principal_approved);\n      const sec = toNum(parsed.secured_amount);\n      return total > 0 ? Math.round((sec / total) * 100) : 0;\n    })(),\n\n    processingStatus: 'SUCCESS',\n    processed_at: new Date().toISOString(),\n    original_len: (originalResponse || '').length\n  };\n\n  // Minimal validation\n  const required = [\n    'application_id','principal_requested','principal_approved',\n    'tenor_months','repayment_frequency','periodic_payment',\n    'total_interest','total_payable'\n  ];\n  const missing = required.filter(k =>\n    out[k] === null || out[k] === undefined ||\n    (typeof out[k] === 'number' && Number.isNaN(out[k]))\n  );\n  if (missing.length) {\n    return {\n      processingStatus: 'VALIDATION_ERROR',\n      application_id: out.application_id,\n      missing_fields: missing,\n      parsed_preview: Object.keys(parsed),\n      original_len: (originalResponse || '').length,\n      timestamp: new Date().toISOString()\n    };\n  }\n\n  return out;\n};\n\n// -------- Ingest multiple items --------\nconst inputs = $input.all();\nconst results = [];\n\nfor (const it of inputs) {\n  const payload = it.json ?? it;\n  let raw =\n    payload?.output ??\n    payload?.response ??\n    payload?.content ??\n    (Array.isArray(payload) && payload[0]?.output) ??\n    (typeof payload === 'string' ? payload : JSON.stringify(payload));\n\n  try {\n    const parsed = parseOne(raw);\n    const plan = normalizePlan(parsed, raw);\n    results.push({ json: plan });\n  } catch (err) {\n    results.push({\n      json: {\n        processingStatus: 'PARSE_ERROR',\n        error: { message: err.message },\n        cleaned_preview: String(raw).slice(0, 500),\n        timestamp: new Date().toISOString()\n      }\n    });\n  }\n}\n\nreturn results;\n"
+      },
+      "id": "28c0e463-022f-4fa3-b150-8f95928b0926",
+      "name": "Parse ESG Agent Response4",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a loan planning assistant for BPI BanKO’s NegosyoKo product.\n\nGOAL\nReturn a clear loan plan as JSON. Use flat interest 2.75%/mo. If assets are declared, compute how much of the loan is secured by collateral and show the split. Provide a short reasoning for transparency.\n\nINPUT (from workflow JSON)\n- application_id: {{ $json.application_id }}\n- user_id: {{ $('Officer Trigger').item.json.body.userId }}\n- loan_amount: {{ $('Preloan Details').item.json.loan_amount }}\n- loan_tenor_months: {{ $('Preloan Details').item.json.loan_tenor_months }}\n- repayment_frequency: {{ $('Preloan Details').item.json.repayment_frequency }}   // \"monthly\" or \"weekly\"\n- loan_purpose: {{ $('Preloan Details').item.json.loan_purpose }}\n- declared_assets: [\n    {\n      \"asset_name\": {{ $json.asset_name }},\n      \"valuation_price\": {{ $json.valuation_price }},\n      \"recommended_ltv_ratio_pct\": {{ $json.recommended_ltv_ratio_pct }}\n    }\n  ]  // if none, pass an empty array\n\nPOLICY\n- Monthly flat rate r_m = 0.0275.\n- Weekly flat rate r_w = r_m * 12 / 52 ≈ 0.006346.\n- Flat method: total_interest = principal * rate_per_period * periods; amort = (principal + total_interest) / periods.\n- Recommended income (affordability): monthly_payment * 4. For weekly, monthly_payment = periodic_payment * 4.333.\n\nCOLLATERAL\n- loanable_from_asset = valuation_price * (recommended_ltv_ratio_pct).\n- total_collateral_loanable = sum(loanable_from_asset).\n- secured_amount   = min(loan_amount, total_collateral_loanable).\n- unsecured_amount = max(0, loan_amount - secured_amount).\n\nOUTPUT (return ONLY this JSON, no prose, no code fences)\n{\n  \"application_id\": \"<string>\",\n  \"user_id\": \"<string>\",\n  \"product\": \"NegosyoKo\",\n  \"principal_requested\": number,\n  \"principal_approved\": number,\n  \"secured_amount\": number,\n  \"unsecured_amount\": number,\n  \"tenor_months\": number,\n  \"repayment_frequency\": \"monthly\" | \"weekly\",\n  \"rate_per_period\": number,\n  \"loan_purpose\": \"<string>\",\n  \"status\": \"approved\"\n  \"collateral\": {\n    \"assets\": [\n      { \"asset_name\": \"<string>\", \"valuation_price\": number, \"recommended_ltv_ratio_pct\": number, \"loanable_amount\": number }\n    ],\n    \"total_collateral_loanable\": number\n  },\n  \"summary\": {\n    \"periodic_payment\": number,\n    \"total_interest\": number,\n    \"total_payable\": number,\n    \"recommended_monthly_income\": number\n  },\n  \"reasoning\": \"<short explanation of how collateral affects the plan, why secured/unsecured amounts were split, and how interest & income check were calculated>\"\n}\n\nSTEPS\n1) Compute collateral amounts and secured/unsecured split.\n2) Use principal_approved = loan_amount (assume approved for plan).\n3) Calculate total_interest, total_payable, periodic_payment.\n4) Add a concise reasoning string (2–4 sentences).\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1392,
+        1856
+      ],
+      "id": "154d1793-6695-46d0-845c-65a7d6c7141f",
+      "name": "Loan Offer Agent w/ Asset"
+    },
+    {
+      "parameters": {
+        "jsCode": "// NegosyoKo (No-Collateral) — Minimal Plan Parser (n8n Function)\n// Parses agent output with possible prose/```json fences and returns one compact plan item.\n\nconst toNum = (v, def = 0) => {\n  const n = typeof v === 'string' && v.trim() === '' ? NaN : Number(v);\n  return Number.isFinite(n) ? n : def;\n};\n\nconst parseJSONFromText = (raw) => {\n  if (raw == null) throw new Error('Empty response');\n  const cleaned = String(raw)\n    .replace(/```json\\s*/gi, '')\n    .replace(/```\\s*/g, '')\n    .replace(/^[\\s\\S]*?({[\\s\\S]*})[\\s\\S]*$/m, '$1')\n    .trim();\n  return JSON.parse(cleaned);\n};\n\nconst inputs = $input.all();\nconst out = [];\n\nfor (const it of inputs) {\n  const payload = it.json ?? it;\n\n  // Accept common wrappers\n  const raw =\n    payload?.output ??\n    payload?.response ??\n    payload?.content ??\n    (Array.isArray(payload) && payload[0]?.output) ??\n    (typeof payload === 'string' ? payload : JSON.stringify(payload));\n\n  try {\n    const parsed = parseJSONFromText(raw);\n\n    // Minimal validation\n    if (!parsed?.application_id || !parsed?.summary) {\n      throw new Error('Missing required fields: application_id or summary');\n    }\n\n    const s = parsed.summary || {};\n\n    const plan = {\n      application_id: parsed.application_id,\n      user_id: parsed.user_id ?? null,\n      product: parsed.product ?? 'NegosyoKo',\n\n      principal: toNum(parsed.principal),\n      tenor_months: toNum(parsed.tenor_months),\n      repayment_frequency: parsed.repayment_frequency ?? 'monthly',\n      rate_per_period: toNum(parsed.rate_per_period),\n      loan_purpose: parsed.loan_purpose ?? null,\n\n      periodic_payment: toNum(s.periodic_payment),\n      total_interest: toNum(s.total_interest),\n      total_payable: toNum(s.total_payable),\n      recommended_monthly_income: toNum(s.recommended_monthly_income),\n\n      reasoning: parsed.reasoning ?? null,\n\n      processingStatus: 'SUCCESS',\n      processed_at: new Date().toISOString()\n    };\n\n    // Final required check\n    const required = ['principal','tenor_months','repayment_frequency','rate_per_period','periodic_payment','total_interest','total_payable','recommended_monthly_income'];\n    const missing = required.filter(k => plan[k] === null || plan[k] === undefined || (typeof plan[k] === 'number' && Number.isNaN(plan[k])));\n    if (missing.length) {\n      out.push({\n        json: {\n          processingStatus: 'VALIDATION_ERROR',\n          application_id: plan.application_id || 'missing_application_id',\n          missing_fields: missing,\n          timestamp: new Date().toISOString()\n        }\n      });\n    } else {\n      out.push({ json: plan });\n    }\n  } catch (err) {\n    out.push({\n      json: {\n        processingStatus: 'PARSE_ERROR',\n        error: { message: err.message },\n        preview: String(raw).slice(0, 500),\n        timestamp: new Date().toISOString()\n      }\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "id": "a087c779-41cb-48d2-ae1a-766ed832e68a",
+      "name": "Parse ESG Agent Response5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1904,
+        2304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "preloan_applications",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Preloan Details').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "officer_checked",
+              "fieldValue": "=true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2512,
+        1904
+      ],
+      "id": "13af346c-91d9-4740-ba44-1c2cd1aedae9",
+      "name": "Completed",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "loan_plans",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "application_id",
+              "fieldValue": "={{ $json.application_id }}"
+            },
+            {
+              "fieldId": "product",
+              "fieldValue": "={{ $json.product }}"
+            },
+            {
+              "fieldId": "principal_requested",
+              "fieldValue": "={{ $json.principal_requested }}"
+            },
+            {
+              "fieldId": "principal_approved",
+              "fieldValue": "={{ $json.principal_approved }}"
+            },
+            {
+              "fieldId": "rate_per_period",
+              "fieldValue": "={{ $json.rate_per_period }}"
+            },
+            {
+              "fieldId": "collateral_total_loanable",
+              "fieldValue": "={{ $json.collateral_total_loanable }}"
+            },
+            {
+              "fieldId": "periodic_payment",
+              "fieldValue": "={{ $json.periodic_payment }}"
+            },
+            {
+              "fieldId": "total_interest",
+              "fieldValue": "={{ $json.total_interest }}"
+            },
+            {
+              "fieldId": "total_payable",
+              "fieldValue": "={{ $json.total_payable }}"
+            },
+            {
+              "fieldId": "recommended_monthly_income",
+              "fieldValue": "={{ $json.recommended_monthly_income }}"
+            },
+            {
+              "fieldId": "reasoning",
+              "fieldValue": "={{ $json.reasoning }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2224,
+        1904
+      ],
+      "id": "321affb6-7872-4f76-9910-8fe7bb659c26",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "loan_plans",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "application_id",
+              "fieldValue": "={{ $json.application_id }}"
+            },
+            {
+              "fieldId": "product",
+              "fieldValue": "={{ $json.product }}"
+            },
+            {
+              "fieldId": "principal_requested",
+              "fieldValue": "={{ $json.principal_requested }}"
+            },
+            {
+              "fieldId": "principal_approved",
+              "fieldValue": "={{ $json.principal_approved }}"
+            },
+            {
+              "fieldId": "rate_per_period",
+              "fieldValue": "={{ $json.rate_per_period }}"
+            },
+            {
+              "fieldId": "collateral_total_loanable",
+              "fieldValue": "0"
+            },
+            {
+              "fieldId": "periodic_payment",
+              "fieldValue": "={{ $json.periodic_payment }}"
+            },
+            {
+              "fieldId": "total_interest",
+              "fieldValue": "={{ $json.total_interest }}"
+            },
+            {
+              "fieldId": "total_payable",
+              "fieldValue": "={{ $json.total_payable }}"
+            },
+            {
+              "fieldId": "recommended_monthly_income",
+              "fieldValue": "={{ $json.recommended_monthly_income }}"
+            },
+            {
+              "fieldId": "reasoning",
+              "fieldValue": "={{ $json.reasoning }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        2304
+      ],
+      "id": "ec89c140-9c6a-4484-b1fe-32c9079bb1f9",
+      "name": "Create a row1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "preloan_applications",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Preloan Details').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "officer_checked",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        2304
+      ],
+      "id": "386348fe-9750-4cc1-bf53-3ecaafdec545",
+      "name": "Completed1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "HIAbKGxnaARI3kMS",
+          "name": "Supabase account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "PreLoan Application Trigger": [
+      {
+        "json": {
+          "headers": {
+            "host": "sikap-2025.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
+            "content-length": "833",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US,en;q=0.9",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "152.32.112.163",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "PH",
+            "cf-ray": "9721f4310695fe8c-SIN",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "origin": "http://localhost:3001",
+            "priority": "u=1, i",
+            "referer": "http://localhost:3001/",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"",
+            "sec-ch-ua-mobile": "?1",
+            "sec-ch-ua-platform": "\"Android\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "152.32.112.163, 172.68.164.12",
+            "x-forwarded-host": "sikap-2025.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-54-58b646fcb5-zpmm7",
+            "x-is-trusted": "yes",
+            "x-real-ip": "152.32.112.163"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "applicationId": "SLN-1755693570581",
+            "submittedAt": "2025-08-20T12:39:30.581Z",
+            "user": {
+              "id": "7443a60b-e5e6-4b29-80ef-6b088edc2594",
+              "email": "lancedamalerio@gmail.com",
+              "name": "",
+              "firstName": "",
+              "lastName": ""
+            },
+            "loanData": {
+              "loan_amount": 50000,
+              "loan_purpose": "business_expansion",
+              "loan_tenor_months": 12,
+              "repayment_frequency": "monthly",
+              "urgency": "low",
+              "additional_information": "Grow business",
+              "status": "pending",
+              "created_at": "2025-08-20T12:39:30.581Z",
+              "updated_at": "2025-08-20T12:39:30.581Z"
+            },
+            "workflow_type": "preloan_application",
+            "legacyData": {
+              "applicantId": "7443a60b-e5e6-4b29-80ef-6b088edc2594",
+              "applicantName": "",
+              "status": "pending_review",
+              "estimatedProcessingTime": "24-48 hours"
+            },
+            "metadata": {
+              "timestamp": "2025-08-20T12:39:30.581Z",
+              "source": "react_app",
+              "version": "1.0.0",
+              "environment": "development",
+              "requestId": "1755693570581-ggp4ogzb5"
+            }
+          },
+          "webhookUrl": "https://sikap-2025.app.n8n.cloud/webhook/preloan-application",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "ESG Analysis Trigger": [
+      {
+        "json": {
+          "headers": {
+            "host": "sikap-2025.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+            "content-length": "3625",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US,en;q=0.9",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "152.32.112.163",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "PH",
+            "cf-ray": "973abd2a96a5dd3e-HKG",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "origin": "http://localhost:3001",
+            "priority": "u=1, i",
+            "referer": "http://localhost:3001/",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "152.32.112.163, 162.158.178.233",
+            "x-forwarded-host": "sikap-2025.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-54-58b646fcb5-rrb5r",
+            "x-is-trusted": "yes",
+            "x-real-ip": "152.32.112.163"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "submissionId": "ESG-1755953459916",
+            "applicationId": "5b6297a6-fe77-45ac-bef6-7c28d14c399a",
+            "submittedAt": "2025-08-23T12:50:59.916Z",
+            "user": {
+              "id": "2adb509b-5306-4c93-8333-afd6aa0aedf3",
+              "email": "adrian.damalerio@student.ateneo.edu",
+              "name": "",
+              "firstName": "",
+              "lastName": ""
+            },
+            "esgData": {
+              "assessment_id": "a5b5b789-88b0-4197-9ffc-b8b32fe6d7e2",
+              "application_id": "5b6297a6-fe77-45ac-bef6-7c28d14c399a",
+              "environment": {
+                "questions": [
+                  "What steps do you plan to take to minimize waste or manage packaging responsibly for your new online grocery platform, especially concerning fresh produce deliveries?",
+                  "I am aware of eco-friendly sourcing options for groceries and produce.",
+                  "I plan to prioritize reusable or recyclable packaging materials for my deliveries.",
+                  "I actively seek ways to reduce the environmental footprint of my business operations."
+                ],
+                "responses": [
+                  "Sample Answer. This is a sample Answer and a sample answer and sample answer.",
+                  "5",
+                  "4",
+                  "4"
+                ]
+              },
+              "social": {
+                "questions": [
+                  "How do you envision your new online grocery platform will positively impact your local community and foster good relationships with your customers?",
+                  "I believe in providing high-quality products and excellent service to my customers.",
+                  "My business will contribute positively to the well-being of my local community.",
+                  "I am committed to fair and respectful treatment for all individuals connected to my business."
+                ],
+                "responses": [
+                  "Sample Answer. This is a sample Answer and a sample answer and sample answer.",
+                  "5",
+                  "5",
+                  "4"
+                ]
+              },
+              "governance": {
+                "questions": [
+                  "To ensure sound financial management, how will you track the inventory, sales, and expenses specifically for your new online grocery platform?",
+                  "I maintain clear and organized records of my business's financial transactions.",
+                  "I regularly review my financial performance to make informed business decisions.",
+                  "I have a strong sense of responsibility regarding my financial commitments and obligations."
+                ],
+                "responses": [
+                  "Sample Answer. This is a sample Answer and a sample answer and sample answer.",
+                  "4",
+                  "4",
+                  "4"
+                ]
+              },
+              "stability_1": {
+                "questions": [
+                  "With your current monthly income of PHP 30,000, please describe how your existing financial resources will support your household and loan repayments as you establish your new grocery platform."
+                ],
+                "responses": [
+                  "Sample Answer. This is a sample Answer and a sample answer and sample answer."
+                ]
+              },
+              "stability_2": {
+                "questions": [
+                  "To ensure the quick success of your online grocery platform, what are your initial sales projections or key strategies to generate steady income and contribute to your overall financial stability?"
+                ],
+                "responses": [
+                  "Sample Answer. This is a sample Answer and a sample answer and sample answer."
+                ]
+              },
+              "stability_3": {
+                "questions": [
+                  "Starting a new venture can present unexpected challenges. What plans do you have in place to manage unforeseen expenses or temporary income fluctuations during the initial months of your grocery platform?",
+                  "I am confident in my ability to manage my finances and repay this loan successfully.",
+                  "I have a clear and realistic understanding of my monthly budget and expenses.",
+                  "I believe this loan will be a crucial step in strengthening my financial security and business growth."
+                ],
+                "responses": [
+                  "Sample Answer. This is a sample Answer and a sample answer and sample answer.",
+                  "4",
+                  "3",
+                  "4"
+                ]
+              },
+              "status": "completed",
+              "completed_at": "2025-08-23T12:50:59.916Z",
+              "created_at": "2025-08-23T12:26:15.630917+00:00",
+              "updated_at": "2025-08-23T12:50:59.916Z"
+            },
+            "workflow_type": "esg_analysis",
+            "metadata": {
+              "timestamp": "2025-08-23T12:50:59.916Z",
+              "source": "react_app",
+              "version": "1.0.0",
+              "environment": "development",
+              "requestId": "1755953459916-1dkr9d00v"
+            }
+          },
+          "webhookUrl": "https://sikap-2025.app.n8n.cloud/webhook/esg-analysis",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "Officer Trigger": [
+      {
+        "json": {
+          "headers": {
+            "host": "sikap-2025.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
+            "content-length": "1821",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US,en;q=0.9",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "152.32.112.163",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "PH",
+            "cf-ray": "974322a5362bb4c7-HKG",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "origin": "http://localhost:3001",
+            "priority": "u=1, i",
+            "referer": "http://localhost:3001/",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"",
+            "sec-ch-ua-mobile": "?1",
+            "sec-ch-ua-platform": "\"Android\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "152.32.112.163, 162.158.193.80",
+            "x-forwarded-host": "sikap-2025.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-54-58b646fcb5-df97j",
+            "x-is-trusted": "yes",
+            "x-real-ip": "152.32.112.163"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "submissionId": "LOAN-PLAN-1756041503030",
+            "submittedAt": "2025-08-24T13:18:23.030Z",
+            "workflow_type": "loan_approval",
+            "applicationId": "c7442a42-efcf-4b17-892d-a6e89be5540b",
+            "userId": "2adb509b-5306-4c93-8333-afd6aa0aedf3",
+            "status": "processing",
+            "borrower": {
+              "name": "Sean Kyler Damalerio",
+              "email": "adrian.damalerio@student.ateneo.edu",
+              "phone": "09178980909"
+            },
+            "loanData": {
+              "amount": 100000,
+              "purpose": "purchase_inventory",
+              "tenor_months": 24,
+              "repayment_frequency": "monthly",
+              "urgency": "medium"
+            },
+            "checks": {
+              "documents_completed": true,
+              "esg_completed": true,
+              "assets_completed": true
+            },
+            "ai": {
+              "decision": "ACCEPT",
+              "confidence": 0.77,
+              "reasoning": "As a Business Owner, we've assessed your primary income at ₱30,000 per month. Your business, a clothing brand supplier, has been operating for 2 years, which indicates good stability. Based on your requested loan of ₱100,000 over 24 months with an estimated 2% monthly interest, your calculated monthly payment would be ₱5,287.05. This results in a Debt-to-Income (DTI) ratio of 17.62%, which is comfortably within our 'ACCEPT' threshold for business owners (DTI ≤ 28%). Your credit score of 600 falls into our 'Good' tier, and your Risk Grade of B further supports this decision. The loan purpose, purchasing inventory to kickstart your local clothing brand, is viewed positively as business expansion. While the 'Years of Employment' field is 0, your reported business age of 2 years provides sufficient operational history. The 'employer' and 'work address' fields being missing are expected for a business owner, as valid business details including an address in Makati were provided."
+            },
+            "created_at": "2025-08-23T17:00:46.205+00:00",
+            "metadata": {
+              "timestamp": "2025-08-24T13:18:23.030Z",
+              "source": "react_app",
+              "version": "1.0.0",
+              "environment": "development",
+              "requestId": "1756041503030-sypw70o9a"
+            }
+          },
+          "webhookUrl": "https://sikap-2025.app.n8n.cloud/webhook/loan-approval",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "Asset Declaration Trigger": [
+      {
+        "json": {
+          "headers": {
+            "host": "sikap-2025.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+            "content-length": "850",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US,en;q=0.9",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "152.32.112.163",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "PH",
+            "cf-ray": "9743e8fcc3bf2b12-HKG",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "origin": "http://localhost:3001",
+            "priority": "u=1, i",
+            "referer": "http://localhost:3001/",
+            "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Google Chrome\";v=\"139\", \"Chromium\";v=\"139\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "152.32.112.163, 172.68.211.85",
+            "x-forwarded-host": "sikap-2025.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-54-58b646fcb5-df97j",
+            "x-is-trusted": "yes",
+            "x-real-ip": "152.32.112.163"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "submissionId": "ASSET-1756049626091",
+            "applicationId": "42382273-00a5-42d0-847b-31024219c544",
+            "submittedAt": "2025-08-24T15:33:46.091Z",
+            "user": {
+              "id": "2adb509b-5306-4c93-8333-afd6aa0aedf3",
+              "email": "adrian.damalerio@student.ateneo.edu",
+              "name": "",
+              "firstName": "",
+              "lastName": ""
+            },
+            "assetData": {
+              "application_id": "42382273-00a5-42d0-847b-31024219c544",
+              "asset_name": "Sony XM5 Headphones",
+              "category": "electronics",
+              "estimated_value": 12000,
+              "condition": "like_new",
+              "age": 1,
+              "description": "Pretty much brand new, rarely used. Complete with case, chargers, and accessories.",
+              "status": "submitted",
+              "created_at": "2025-08-24T15:33:46.091Z",
+              "updated_at": "2025-08-24T15:33:46.091Z"
+            },
+            "workflow_type": "asset_declaration",
+            "metadata": {
+              "timestamp": "2025-08-24T15:33:46.091Z",
+              "source": "react_app",
+              "version": "1.0.0",
+              "environment": "development",
+              "requestId": "1756049626091-amxgjhqyc"
+            }
+          },
+          "webhookUrl": "https://sikap-2025.app.n8n.cloud/webhook/asset-declaration",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Create Pre-loan Application": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Preloan Application",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get User Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Pre-Loan Application Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "ACCEPT",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "REVIEW",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "REJECT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-Loan Application Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ACCEPT": {
+      "main": [
+        [
+          {
+            "node": "ESG Compliance Questionnaire Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PreLoan Application Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Risk Profile": {
+      "main": [
+        [
+          {
+            "node": "Pre-Loan Application Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Information": {
+      "main": [
+        [
+          {
+            "node": "Get User Risk Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "ESG Compliance Questionnaire Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESG Compliance Questionnaire Generator": {
+      "main": [
+        [
+          {
+            "node": "Format AI Response for DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format AI Response for DB": {
+      "main": [
+        [
+          {
+            "node": "Create ESG Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESG Analysis Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format ESG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Data": {
+      "main": [
+        [
+          {
+            "node": "Create Pre-loan Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format ESG": {
+      "main": [
+        [
+          {
+            "node": "ESG Submitted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESG Submitted": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge ESG Submission",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get User Information1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "ESG Evaluation Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Information1": {
+      "main": [
+        [
+          {
+            "node": "ESG Evaluation Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ESG Evaluation Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse ESG Agent Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ESG Agent Response": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "ACCEPT ESG",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "REVIEW ESG",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "REJECT ESG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asset Declaration Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Asset Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Asset Data": {
+      "main": [
+        [
+          {
+            "node": "Switch2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ACCEPT ESG": {
+      "main": [
+        [
+          {
+            "node": "ESG Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "REVIEW ESG": {
+      "main": [
+        []
+      ]
+    },
+    "Asset Declared": {
+      "main": [
+        [
+          {
+            "node": "Asset Researcher Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Acknowledge Asset Declaration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Asset Researcher Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ESG Agent Response1": {
+      "main": [
+        [
+          {
+            "node": "Asset Valuation Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asset Researcher Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse ESG Agent Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Asset Valuation Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asset Valuation Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse ESG Agent Response2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ESG Agent Response2": {
+      "main": [
+        [
+          {
+            "node": "Get Loan Application Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Loan Application Details": {
+      "main": [
+        [
+          {
+            "node": "LTV Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "LTV Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LTV Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse ESG Agent Response3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ESG Agent Response3": {
+      "main": [
+        [
+          {
+            "node": "Asset Valuation Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asset Valuation Completed": {
+      "main": [
+        [
+          {
+            "node": "Update Valued Price",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Valued Price": {
+      "main": [
+        []
+      ]
+    },
+    "ESG Completed": {
+      "main": [
+        []
+      ]
+    },
+    "Create ESG Assessment": {
+      "main": [
+        []
+      ]
+    },
+    "Google Gemini Chat Model6": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Loan Offer Agent w/ Asset",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Officer Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Application ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Application ID": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Loan Plan",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preloan Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preloan Details": {
+      "main": [
+        [
+          {
+            "node": "Declared Asset?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Declared Asset?": {
+      "main": [
+        [
+          {
+            "node": "Asset Declaration Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loan Offer Agent w/o Asset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asset Declaration Details": {
+      "main": [
+        [
+          {
+            "node": "Loan Offer Agent w/ Asset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model7": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Loan Offer Agent w/o Asset",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch2": {
+      "main": [
+        [
+          {
+            "node": "Asset Valuation Completed1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Asset Declared",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asset Valuation Completed1": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Asset Declaration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loan Offer Agent w/ Asset": {
+      "main": [
+        [
+          {
+            "node": "Parse ESG Agent Response4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ESG Agent Response4": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loan Offer Agent w/o Asset": {
+      "main": [
+        [
+          {
+            "node": "Parse ESG Agent Response5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Completed": {
+      "main": [
+        []
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse ESG Agent Response5": {
+      "main": [
+        [
+          {
+            "node": "Create a row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row1": {
+      "main": [
+        [
+          {
+            "node": "Completed1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9e7a407f-033d-497b-b9e9-3ce03f6af6df",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f306655fcb83a8531a2eb01ae41cec3b9579c73a5c20561ed080704a05112ec0"
+  },
+  "id": "oPbG11Dqg6tsaIpo",
+  "tags": [
+    {
+      "createdAt": "2025-08-20T06:41:09.208Z",
+      "updatedAt": "2025-08-20T06:41:09.208Z",
+      "id": "OcPMULujCnyzdx8D",
+      "name": "SikAP Loan Processing"
+    },
+    {
+      "createdAt": "2025-08-20T14:42:04.103Z",
+      "updatedAt": "2025-08-20T14:42:04.103Z",
+      "id": "PucfjjtqMnHesiIZ",
+      "name": "SikAP"
+    }
+  ]
+}
