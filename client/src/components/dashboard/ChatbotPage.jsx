@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import ReactMarkdown from 'react-markdown';
 import { 
   Send, 
   Bot, 
@@ -281,7 +282,10 @@ What specific feature would you like help with?`
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      const chatContainer = messagesEndRef.current.parentElement;
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
   };
 
   useEffect(() => {
@@ -417,7 +421,13 @@ Could you be more specific about what you'd like to know? I'm here to help! 😊
                         ? 'bg-gradient-to-r from-red-600 to-amber-500 text-white'
                         : 'bg-slate-100 text-slate-900'
                     }`}>
-                      <div className="text-sm whitespace-pre-line">{message.content}</div>
+                      <div className={`text-sm prose prose-sm max-w-none ${
+                        message.type === 'user'
+                          ? 'prose-headings:text-white prose-p:text-white/90 prose-strong:text-white prose-ul:text-white/90 prose-li:text-white/90'
+                          : 'prose-headings:text-slate-900 prose-p:text-slate-700 prose-strong:text-slate-900 prose-ul:text-slate-700 prose-li:text-slate-700'
+                      }`}>
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                      </div>
                       <div className={`text-xs mt-2 ${
                         message.type === 'user' ? 'text-white/70' : 'text-slate-500'
                       }`}>
