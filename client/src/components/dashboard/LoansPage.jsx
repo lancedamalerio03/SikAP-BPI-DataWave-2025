@@ -222,7 +222,7 @@ const LoansPage = () => {
       'processing': 'Processing',
       'pending_interview': 'Pending Interview',
       'under_review': 'Under Review',
-      'pending': 'Pending Documents',
+      'pending': 'Under Review',
       'active': 'Active',
       'completed': 'Completed'
     };
@@ -237,6 +237,7 @@ const LoansPage = () => {
       'processing': 'bg-blue-100 text-blue-800',
       'pending_interview': 'bg-purple-100 text-purple-800',
       'under_review': 'bg-blue-100 text-blue-800',
+      'pending': 'bg-yellow-100 text-yellow-800',
       'active': 'bg-green-100 text-green-800',
       'completed': 'bg-slate-100 text-slate-800'
     };
@@ -273,6 +274,10 @@ const LoansPage = () => {
   // Generate action required message
   const getActionRequiredMessage = (loan) => {
     const pendingItems = getPendingRequirements(loan);
+    
+    if (loan.status === 'Under Review') {
+      return "Your application is currently under review by our team. We'll update you soon.";
+    }
     
     if (pendingItems.length === 0) {
       return "All requirements completed! Your application is being processed.";
@@ -444,10 +449,15 @@ const LoansPage = () => {
                 <div className="p-6 border-b border-slate-200">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-slate-900">{loan.title}</h3>
-                        <Badge className={loan.statusColor}>{loan.status}</Badge>
-                      </div>
+                                              <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-lg font-semibold text-slate-900">{loan.title}</h3>
+                          <Badge className={`${loan.statusColor} ${loan.status === 'Under Review' ? 'animate-pulse' : ''}`}>
+                            {loan.status}
+                            {loan.status === 'Under Review' && (
+                              <span className="ml-2 inline-block w-2 h-2 bg-yellow-500 rounded-full"></span>
+                            )}
+                          </Badge>
+                        </div>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                         <div>
