@@ -35,8 +35,11 @@ const LoansPage = () => {
   const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
-    loadUserLoans();
-  }, [user]);
+    // Only fetch when user is authenticated and has an ID
+    if (user?.id) {
+      loadUserLoans();
+    }
+  }, [user?.id]); // Depend on user.id specifically, not the whole user object
 
   const loadUserLoans = async () => {
     try {

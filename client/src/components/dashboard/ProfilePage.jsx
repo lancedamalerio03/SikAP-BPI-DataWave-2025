@@ -59,7 +59,7 @@ const ProfilePage = () => {
         businessType: 'Online Selling'
       });
     }
-  }, [user]);
+  }, [user?.id, user?.profile]); // Depend on specific user properties
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;

@@ -20,11 +20,18 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     console.log('AuthProvider: Initializing Supabase auth...')
     
+    // Safety fallback - ensure loading never stays true indefinitely
+    const fallbackTimeout = setTimeout(() => {
+      console.warn('AuthProvider: Fallback timeout triggered - forcing loading to false')
+      setLoading(false)
+    }, 10000) // 10 second fallback
+    
     // Check if we just signed out
     const justSignedOut = sessionStorage.getItem('sikap-signed-out')
     if (justSignedOut) {
       console.log('AuthProvider: Recently signed out, skipping session restore')
       sessionStorage.removeItem('sikap-signed-out')
+      clearTimeout(fallbackTimeout)
       setLoading(false)
       return
     }
@@ -32,68 +39,120 @@ export const AuthProvider = ({ children }) => {
     console.log('🔍 AuthContext: Checking for initial session...')
     
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error('Error getting session:', error)
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      try {
+        if (error) {
+          console.error('Error getting session:', error)
+          setLoading(false)
+          return
+        }
+        
+        console.log('🔍 Initial session check:', session?.user?.email || 'No session')
+        
+        if (session?.user) {
+          console.log('AuthProvider: Found existing session', session.user.email)
+          setUser(session.user)
+          setIsAuthenticated(true)
+          // Try to fetch profile, but don't let it block loading completion
+          try {
+            await Promise.race([
+              fetchUserProfile(session.user.id),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 5000))
+            ])
+          } catch (profileError) {
+            console.warn('Profile fetch failed or timed out:', profileError)
+            // Continue with basic user info even if profile fetch fails
+          }
+        }
+      } catch (error) {
+        console.error('Unexpected error in session initialization:', error)
+      } finally {
+        clearTimeout(fallbackTimeout)
         setLoading(false)
-        return
       }
-      
-      console.log('🔍 Initial session check:', session?.user?.email || 'No session')
-      
-      if (session?.user) {
-        console.log('AuthProvider: Found existing session', session.user.email)
-        setUser(session.user)
-        setIsAuthenticated(true)
-        fetchUserProfile(session.user.id)
-      }
-      setLoading(false)
     })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('AuthProvider: Auth state changed', event, session?.user?.email)
-      
-      if (session?.user) {
-        setUser(session.user)
-        setIsAuthenticated(true)
-        await fetchUserProfile(session.user.id)
-      } else {
-        setUser(null)
-        setIsAuthenticated(false)
+      try {
+        console.log('AuthProvider: Auth state changed', event, session?.user?.email)
+        
+        if (session?.user) {
+          setUser(session.user)
+          setIsAuthenticated(true)
+          // Try to fetch profile, but don't let it block auth state updates
+          try {
+            await Promise.race([
+              fetchUserProfile(session.user.id),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 5000))
+            ])
+          } catch (profileError) {
+            console.warn('Profile fetch failed or timed out in auth state change:', profileError)
+            // Continue with basic user info
+          }
+        } else {
+          setUser(null)
+          setIsAuthenticated(false)
+        }
+      } catch (error) {
+        console.error('Unexpected error in auth state change:', error)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     })
 
-    return () => subscription?.unsubscribe()
+    return () => {
+      clearTimeout(fallbackTimeout)
+      subscription?.unsubscribe()
+    }
   }, [])
 
   const fetchUserProfile = async (userId) => {
     try {
       console.log('AuthProvider: Fetching user profile for', userId)
       
-      const { data, error } = await supabase
+      // Add timeout to the database query
+      const profileQuery = supabase
         .from('users_profiles')
         .select('*')
         .eq('id', userId)
         .single()
 
+      const { data, error } = await Promise.race([
+        profileQuery,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database query timeout')), 3000)
+        )
+      ])
+
       if (error) {
         if (error.code === 'PGRST116') {
           console.log('AuthProvider: No profile found for user')
+          // Still set user with basic info and no profile
+          setUser(prev => prev ? ({
+            ...prev,
+            profile: null,
+            profileComplete: false
+          }) : prev)
           return
         }
         throw error
       }
       
       console.log('AuthProvider: Profile fetched successfully', data)
-      setUser(prev => ({
+      setUser(prev => prev ? ({
         ...prev,
         profile: data,
         profileComplete: data?.profile_complete || false
-      }))
+      }) : prev)
     } catch (error) {
       console.error('AuthProvider: Error fetching user profile:', error)
+      // Don't fail completely, just log the error and proceed
+      setUser(prev => prev ? ({
+        ...prev,
+        profile: null,
+        profileComplete: false
+      }) : prev)
     }
   }
 

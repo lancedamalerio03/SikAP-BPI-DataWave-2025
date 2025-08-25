@@ -41,6 +41,7 @@ const AgentsPage = () => {
     const loadData = async () => {
       try {
         setLoading(true);
+        setError(null); // Clear any previous errors
         const data = await locationService.getAllLocations();
         
         // Only update state if component is still mounted
@@ -63,7 +64,7 @@ const AgentsPage = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, []); // Empty dependency array is correct here since this doesn't depend on user
   // And this loadLocations function:
   const loadLocations = async () => {
     try {
