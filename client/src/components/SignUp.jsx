@@ -13,22 +13,115 @@ import {
   AlertCircle,
   User,
   MapPin,
-  Briefcase,
   Upload,
   CheckCircle,
   Calendar,
   Phone,
   Globe,
-  Home,
-  Building2,
   CreditCard,
-  FileText
+  Briefcase
 } from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 
+const EMPLOYMENT_STATUSES = [
+  'Employed (Full-time)',
+  'Employed (Part-time)',
+  'Self-employed',
+  'Business Owner',
+  'Freelancer/Contractor',
+  'OFW',
+  'Student',
+  'Unemployed',
+  'Retired'
+]
+
+const SOURCE_OF_FUNDS_OPTIONS = [
+  'Salary',
+  'Commission',
+  'Business',
+  'Pension',
+  'Interest on Savings/Placements/Investments',
+  'Allowance',
+  'Donations/Contributions',
+  'Campaign Funds',
+  'Regular Remittances',
+  'Others'
+]
+
+const NATURE_OF_WORK_OPTIONS = [
+  'Self-Employed/Business Owner',
+  'Clerical/Rank and File',
+  'Contractual/Proby',
+  'Government (Elected/Appointed)',
+  'Household Help/Yaya/Driver',
+  'Mgr/Supervisor/Middle Level',
+  'Overseas Filipino Worker',
+  'PEP - Foreign',
+  'PEP - Local',
+  'Professional',
+  'Religious Leader',
+  'Sales Rep',
+  'Seafarer',
+  'Student',
+  'Technical/Computer',
+  'Top Management/Senior Level',
+  'Foreign Ambassador/Diplomat',
+  'Economically Inactive Clients (unemployed)',
+  'Office Based',
+  'Factory Based',
+  'Services Industry',
+  'Domestic Services',
+  'Call Center',
+  'Others'
+]
+
+const ACCOUNT_PURPOSE_OPTIONS = [
+  'Business',
+  'Savings/Payroll',
+  'Payments',
+  'Remittance'
+]
+
+const PSIC_BUSINESS_TYPES = [
+  'Agriculture & Forestry',
+  'Fishing',
+  'Mining',
+  'Manufacturing',
+  'Electricity, Gas, and Water Supply',
+  'Construction',
+  'Wholesale and Retail',
+  'Hotels and Restaurants',
+  'Transport, Storage, and Communication',
+  'Financial Intermediation',
+  'Real Estate, Renting & Business Activities',
+  'Private Education',
+  'Health and Social Work',
+  'Other Community, Social And Personal Service Activities Establishments',
+  'Business Process Outsourcing Establishments'
+]
+
+const PHILIPPINES_REGIONS = [
+  "National Capital Region (NCR)",
+  "Region I (Ilocos Region)",
+  "Region II (Cagayan Valley)",
+  "Region III (Central Luzon)",
+  "Region IV-A (CALABARZON)",
+  "Region IV-B (MIMAROPA)",
+  "Region V (Bicol Region)",
+  "Region VI (Western Visayas)",
+  "Region VII (Central Visayas)",
+  "Region VIII (Eastern Visayas)",
+  "Region IX (Zamboanga Peninsula)",
+  "Region X (Northern Mindanao)",
+  "Region XI (Davao Region)",
+  "Region XII (SOCCSKSARGEN)",
+  "Region XIII (Caraga)",
+  "Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)"
+]
+
 export default function SignUp() {
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { signUp } = useAuth()
   
   const [currentStep, setCurrentStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
@@ -63,7 +156,7 @@ export default function SignUp() {
     spouseName: '',
     spouseDateOfBirth: '',
     
-    // Step 3: Address & Occupation
+    // Step 3: Address & Source of Funds
     homeUnit: '',
     homeStreet: '',
     homeBarangay: '',
@@ -73,47 +166,37 @@ export default function SignUp() {
     homeZipCode: '',
     homeOwnership: '',
     lengthOfStay: '',
+    
+    // NEW: Source of Funds fields
+    sourceOfFunds: '',
+    natureOfWork: '',
+    accountPurpose: '',
+    
+    // Step 4: Employment Information (Enhanced)
     employmentStatus: '',
     occupation: '',
+    monthlyIncome: '',
+    
+    // For Employees/OFW
     employerName: '',
     employerAddress: '',
-    monthlyIncome: '',
     yearsOfEmployment: '',
     
-    // Step 4: Document Upload - will store file references
+    // For Self-employed/Freelancer
+    workAddress: '',
+    
+    // For Business Owners
+    natureOfBusiness: '',
+    activityOfBusiness: '',
+    businessAge: '',
+    businessAddress: '',
+    
+    // For Student/Unemployed/Retired
+    monthlyFunds: '',
+    
+    // Step 5: Document Upload (moved from Step 4)
     primaryId: null
   })
-
-  const regions = [
-    "National Capital Region (NCR)",
-    "Region I (Ilocos Region)",
-    "Region II (Cagayan Valley)",
-    "Region III (Central Luzon)",
-    "Region IV-A (CALABARZON)",
-    "Region IV-B (MIMAROPA)",
-    "Region V (Bicol Region)",
-    "Region VI (Western Visayas)",
-    "Region VII (Central Visayas)",
-    "Region VIII (Eastern Visayas)",
-    "Region IX (Zamboanga Peninsula)",
-    "Region X (Northern Mindanao)",
-    "Region XI (Davao Region)",
-    "Region XII (SOCCSKSARGEN)",
-    "Region XIII (Caraga)",
-    "Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)"
-  ]
-
-  const employmentStatuses = [
-    "Employed (Full-time)",
-    "Employed (Part-time)",
-    "Self-employed",
-    "Business Owner",
-    "Freelancer/Contractor",
-    "OFW",
-    "Student",
-    "Unemployed",
-    "Retired"
-  ]
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -192,7 +275,11 @@ export default function SignUp() {
         break
         
       case 3:
-        const requiredStep3 = ['homeUnit', 'homeStreet', 'homeBarangay', 'homeCity', 'homeProvince', 'homeRegion', 'homeZipCode', 'employmentStatus']
+        // Address & Source of Funds validation (FIXED)
+        const requiredStep3 = [
+          'homeUnit', 'homeStreet', 'homeBarangay', 'homeCity', 'homeProvince', 'homeRegion', 'homeZipCode',
+          'sourceOfFunds', 'natureOfWork', 'accountPurpose'
+        ]
         for (let field of requiredStep3) {
           if (!formData[field]) {
             setError('Please fill in all required fields')
@@ -202,18 +289,58 @@ export default function SignUp() {
         break
         
       case 4:
+        // Employment validation (FIXED)
+        if (!formData.employmentStatus) {
+          setError('Please select your employment status')
+          return false
+        }
+        
+        const empStatus = formData.employmentStatus
+        
+        if (empStatus?.includes('Employed') || empStatus === 'OFW') {
+          const employeeFields = ['occupation', 'employerName', 'employerAddress', 'yearsOfEmployment', 'monthlyIncome']
+          for (let field of employeeFields) {
+            if (!formData[field]) {
+              setError('Please fill in all employment details')
+              return false
+            }
+          }
+        } else if (empStatus === 'Self-employed' || empStatus === 'Freelancer/Contractor') {
+          const selfEmployedFields = ['occupation', 'monthlyIncome', 'workAddress']
+          for (let field of selfEmployedFields) {
+            if (!formData[field]) {
+              setError('Please fill in all work details')
+              return false
+            }
+          }
+        } else if (empStatus === 'Business Owner') {
+          const businessFields = ['occupation', 'natureOfBusiness', 'activityOfBusiness', 'businessAge', 'businessAddress', 'monthlyIncome']
+          for (let field of businessFields) {
+            if (!formData[field]) {
+              setError('Please fill in all business details')
+              return false
+            }
+          }
+        }
+        break
+        
+      case 5:
+        // Document validation (FIXED)
         if (!uploadedFiles.primaryId) {
           setError('Please upload a valid government ID')
           return false
         }
         break
+        
+      default:
+        return true
     }
     return true
   }
 
   const handleNext = () => {
     if (validateStep(currentStep)) {
-      setCurrentStep(prev => Math.min(prev + 1, 4))
+      setCurrentStep(prev => Math.min(prev + 1, 5)) // FIXED: Changed from 4 to 5
     }
   }
 
@@ -224,26 +351,19 @@ export default function SignUp() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    if (!validateStep(4)) return
+    if (!validateStep(5)) return // FIXED: Changed from 4 to 5
     
     setLoading(true)
     setError('')
-
+  
     try {
-      // Simulate API call to create account with all data
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // Prepare user data for authentication context
+      // Prepare user data for Supabase
       const userData = {
-        id: Date.now(),
         email: formData.email,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        name: `${formData.firstName} ${formData.lastName}`,
-        profileComplete: true,
-        accountStatus: 'pending_verification', // Will be verified after document review
         personalInfo: {
+          firstName: formData.firstName,
           middleName: formData.middleName,
+          lastName: formData.lastName,
           suffix: formData.suffix,
           dateOfBirth: formData.dateOfBirth,
           placeOfBirth: formData.placeOfBirth,
@@ -270,28 +390,54 @@ export default function SignUp() {
           homeOwnership: formData.homeOwnership,
           lengthOfStay: formData.lengthOfStay
         },
+        // NEW: Financial Information
+        financialInfo: {
+          sourceOfFunds: formData.sourceOfFunds,
+          natureOfWork: formData.natureOfWork,
+          accountPurpose: formData.accountPurpose
+        },
+        // ENHANCED: Employment Information
         employment: {
           employmentStatus: formData.employmentStatus,
           occupation: formData.occupation,
-          employerName: formData.employerName,
-          employerAddress: formData.employerAddress,
           monthlyIncome: formData.monthlyIncome,
-          yearsOfEmployment: formData.yearsOfEmployment
+          
+          // Conditional fields based on employment status
+          ...(formData.employmentStatus?.includes('Employed') || formData.employmentStatus === 'OFW' ? {
+            employerName: formData.employerName,
+            employerAddress: formData.employerAddress,
+            yearsOfEmployment: formData.yearsOfEmployment
+          } : {}),
+          
+          ...(formData.employmentStatus === 'Self-employed' || formData.employmentStatus === 'Freelancer/Contractor' ? {
+            workAddress: formData.workAddress
+          } : {}),
+          
+          ...(formData.employmentStatus === 'Business Owner' ? {
+            natureOfBusiness: formData.natureOfBusiness,
+            activityOfBusiness: formData.activityOfBusiness,
+            businessAge: formData.businessAge,
+            businessAddress: formData.businessAddress
+          } : {}),
+          
+          ...(['Student', 'Unemployed', 'Retired'].includes(formData.employmentStatus) ? {
+            monthlyFunds: formData.monthlyFunds
+          } : {})
         },
         documents: {
           primaryId: formData.primaryId,
           uploadedFiles: uploadedFiles
-        },
-        registrationDate: new Date().toISOString()
+        }
       }
-      
-      // Auto sign-in after successful registration
-      await login(formData.email, formData.password, userData)
+  
+      // Sign up with Supabase
+      await signUp(formData.email, formData.password, userData)
       
       // Redirect to dashboard
       navigate('/dashboard')
     } catch (err) {
-      setError('Failed to create account. Please try again.')
+      console.error('Registration error:', err)
+      setError(err.message || 'Failed to create account. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -668,12 +814,13 @@ export default function SignUp() {
         )
 
       case 3:
+        // Step 3: Address & Source of Funds ONLY
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
               <MapPin className="w-12 h-12 text-red-600 mx-auto mb-3" />
-              <h3 className="text-xl font-semibold text-slate-900">Address & Occupation</h3>
-              <p className="text-slate-600">Complete address and employment details</p>
+              <h3 className="text-xl font-semibold text-slate-900">Address & Source of Funds</h3>
+              <p className="text-slate-600">Complete your address and financial information</p>
             </div>
 
             {/* Address Information */}
@@ -757,7 +904,7 @@ export default function SignUp() {
                     required
                   >
                     <option value="">Select region</option>
-                    {regions.map((region) => (
+                    {PHILIPPINES_REGIONS.map((region) => (
                       <option key={region} value={region}>{region}</option>
                     ))}
                   </select>
@@ -805,10 +952,74 @@ export default function SignUp() {
               </div>
             </div>
 
+            {/* Source of Funds Information */}
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+              <h4 className="font-medium text-yellow-900 mb-3">Source of Funds</h4>
+              
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Source of Funds *</label>
+                  <select 
+                    name="sourceOfFunds" 
+                    value={formData.sourceOfFunds} 
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                    required
+                  >
+                    <option value="">Select source of funds</option>
+                    {SOURCE_OF_FUNDS_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Nature of Work *</label>
+                  <select 
+                    name="natureOfWork" 
+                    value={formData.natureOfWork} 
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                    required
+                  >
+                    <option value="">Select nature of work</option>
+                    {NATURE_OF_WORK_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Account Purpose *</label>
+                <select 
+                  name="accountPurpose" 
+                  value={formData.accountPurpose} 
+                  onChange={handleInputChange}
+                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                  required
+                >
+                  <option value="">Select account purpose</option>
+                  {ACCOUNT_PURPOSE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )
+
+      case 4:
+        // Step 4: Employment Information ONLY
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <Briefcase className="w-12 h-12 text-red-600 mx-auto mb-3" />
+              <h3 className="text-xl font-semibold text-slate-900">Employment Information</h3>
+              <p className="text-slate-600">Tell us about your work and income</p>
+            </div>
+
             {/* Employment Information */}
             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-              <h4 className="font-medium text-green-900 mb-3">Employment Information</h4>
-              
               <div className="grid md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Employment Status *</label>
@@ -820,7 +1031,7 @@ export default function SignUp() {
                     required
                   >
                     <option value="">Select status</option>
-                    {employmentStatuses.map((status) => (
+                    {EMPLOYMENT_STATUSES.map((status) => (
                       <option key={status} value={status}>{status}</option>
                     ))}
                   </select>
@@ -838,11 +1049,14 @@ export default function SignUp() {
                 </div>
               </div>
 
+              {/* Conditional Fields Based on Employment Status */}
+              
+              {/* For Employees (Full-time, Part-time) and OFW */}
               {(formData.employmentStatus?.includes('Employed') || formData.employmentStatus === 'OFW') && (
-                <>
-                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Employer Name</label>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Employer Name *</label>
                       <input 
                         type="text" 
                         name="employerName" 
@@ -850,23 +1064,26 @@ export default function SignUp() {
                         onChange={handleInputChange}
                         className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
                         placeholder="Company Name"
+                        required
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Years of Employment</label>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Years of Employment *</label>
                       <input 
-                        type="text" 
+                        type="number" 
                         name="yearsOfEmployment" 
                         value={formData.yearsOfEmployment} 
                         onChange={handleInputChange}
                         className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
-                        placeholder="3 years"
+                        placeholder="3"
+                        min="0"
+                        step="0.5"
+                        required
                       />
                     </div>
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Employer Address</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Employer Address *</label>
                     <input 
                       type="text" 
                       name="employerAddress" 
@@ -874,30 +1091,175 @@ export default function SignUp() {
                       onChange={handleInputChange}
                       className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
                       placeholder="Complete employer address"
+                      required
                     />
                   </div>
-                </>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Income *</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">₱</span>
+                      <input 
+                        type="number" 
+                        name="monthlyIncome" 
+                        value={formData.monthlyIncome} 
+                        onChange={handleInputChange}
+                        className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                        placeholder="25000"
+                        min="0"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
               )}
 
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Income</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">â‚±</span>
-                  <input 
-                    type="number" 
-                    name="monthlyIncome" 
-                    value={formData.monthlyIncome} 
-                    onChange={handleInputChange}
-                    className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
-                    placeholder="25000"
-                  />
+              {/* For Self-employed and Freelancer/Contractor */}
+              {(formData.employmentStatus === 'Self-employed' || formData.employmentStatus === 'Freelancer/Contractor') && (
+                <div className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Income *</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">₱</span>
+                        <input 
+                          type="number" 
+                          name="monthlyIncome" 
+                          value={formData.monthlyIncome} 
+                          onChange={handleInputChange}
+                          className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                          placeholder="25000"
+                          min="0"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Work Address *</label>
+                      <input 
+                        type="text" 
+                        name="workAddress" 
+                        value={formData.workAddress} 
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                        placeholder="Your work location"
+                        required
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* For Business Owner */}
+              {formData.employmentStatus === 'Business Owner' && (
+                <div className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Nature of Business (PSIC) *</label>
+                      <select 
+                        name="natureOfBusiness" 
+                        value={formData.natureOfBusiness} 
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                        required
+                      >
+                        <option value="">Select business type</option>
+                        {PSIC_BUSINESS_TYPES.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Business Age (years) *</label>
+                      <input 
+                        type="number" 
+                        name="businessAge" 
+                        value={formData.businessAge} 
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                        placeholder="5"
+                        min="0"
+                        step="0.5"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Activity of Business *</label>
+                    <textarea 
+                      name="activityOfBusiness" 
+                      value={formData.activityOfBusiness} 
+                      onChange={handleInputChange}
+                      className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                      placeholder="Describe what your business does (e.g., Online retail of clothing and accessories)"
+                      rows="3"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Business Address *</label>
+                    <input 
+                      type="text" 
+                      name="businessAddress" 
+                      value={formData.businessAddress} 
+                      onChange={handleInputChange}
+                      className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                      placeholder="Complete business address"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Monthly Income *</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">₱</span>
+                      <input 
+                        type="number" 
+                        name="monthlyIncome" 
+                        value={formData.monthlyIncome} 
+                        onChange={handleInputChange}
+                        className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                        placeholder="50000"
+                        min="0"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* For Student, Unemployed, or Retired */}
+              {['Student', 'Unemployed', 'Retired'].includes(formData.employmentStatus) && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Monthly Funds/Allowance
+                      {formData.employmentStatus === 'Student' && ' (e.g., allowance, part-time work)'}
+                      {formData.employmentStatus === 'Retired' && ' (e.g., pension, savings)'}
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">₱</span>
+                      <input 
+                        type="number" 
+                        name="monthlyFunds" 
+                        value={formData.monthlyFunds} 
+                        onChange={handleInputChange}
+                        className="w-full pl-8 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
+                        placeholder="15000"
+                        min="0"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">Optional - helps us understand your financial capacity</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )
 
-      case 4:
+      case 5:
+        // Step 5: Document Upload
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -910,10 +1272,10 @@ export default function SignUp() {
             <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
               <h4 className="font-medium text-amber-900 mb-2">Upload Requirements</h4>
               <ul className="text-sm text-amber-700 space-y-1">
-                <li>â€¢ Accepted formats: JPG, PNG, PDF</li>
-                <li>â€¢ Maximum file size: 5MB</li>
-                <li>â€¢ Ensure document is clear and readable</li>
-                <li>â€¢ All information must be visible</li>
+                <li>• Accepted formats: JPG, PNG, PDF</li>
+                <li>• Maximum file size: 5MB</li>
+                <li>• Ensure document is clear and readable</li>
+                <li>• All information must be visible</li>
               </ul>
             </div>
 
@@ -994,10 +1356,10 @@ export default function SignUp() {
             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
               <h4 className="font-medium text-green-900 mb-2">What happens next?</h4>
               <ul className="text-sm text-green-700 space-y-1">
-                <li>â€¢ Your account will be created instantly</li>
-                <li>â€¢ ID verification typically takes 1-2 business days</li>
-                <li>â€¢ You can start applying for loans immediately</li>
-                <li>â€¢ Additional documents may be requested during loan processing</li>
+                <li>• Your account will be created instantly</li>
+                <li>• ID verification typically takes 1-2 business days</li>
+                <li>• You can start applying for loans immediately</li>
+                <li>• Additional documents may be requested during loan processing</li>
               </ul>
             </div>
           </div>
@@ -1036,13 +1398,13 @@ export default function SignUp() {
       <div className="bg-white border-b border-slate-200">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-slate-600">Step {currentStep} of 4</span>
-            <span className="text-sm text-slate-500">{Math.round((currentStep / 4) * 100)}% Complete</span>
+            <span className="text-sm font-medium text-slate-600">Step {currentStep} of 5</span>
+            <span className="text-sm text-slate-500">{Math.round((currentStep / 5) * 100)}% Complete</span>
           </div>
           <div className="w-full bg-slate-200 rounded-full h-2">
             <div 
               className="bg-gradient-to-r from-red-600 to-amber-500 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / 4) * 100}%` }}
+              style={{ width: `${(currentStep / 5) * 100}%` }}
             ></div>
           </div>
         </div>
@@ -1061,7 +1423,7 @@ export default function SignUp() {
             )}
 
             {/* Step Content */}
-            <form onSubmit={currentStep === 4 ? handleSubmit : (e) => e.preventDefault()}>
+            <form onSubmit={currentStep === 5 ? handleSubmit : (e) => e.preventDefault()}>
               {renderStepContent()}
 
               {/* Navigation Buttons */}
@@ -1076,7 +1438,7 @@ export default function SignUp() {
                   Previous
                 </Button>
 
-                {currentStep < 4 ? (
+                {currentStep < 5 ? (
                   <Button
                     type="button"
                     onClick={handleNext}
@@ -1109,7 +1471,7 @@ export default function SignUp() {
 
             {/* Step Indicators */}
             <div className="flex justify-center mt-6 space-x-2">
-              {[1, 2, 3, 4].map((step) => (
+              {[1, 2, 3, 4, 5].map((step) => (
                 <div
                   key={step}
                   className={`w-3 h-3 rounded-full transition-colors ${

@@ -17,15 +17,16 @@ import {
   Bot,
   MessageCircle
 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 export default function FAQs() {
+  const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [openFAQ, setOpenFAQ] = useState(null)
 
   const handleBackToHome = () => {
-    // navigate('/')
-    console.log('Navigating back to home')
+    navigate('/')
   }
 
   const categories = [

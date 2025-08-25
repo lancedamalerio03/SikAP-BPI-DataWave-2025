@@ -4,217 +4,106 @@ import { Card } from "./ui/card"
 import { Badge } from "./ui/badge"
 import { 
   ArrowLeft, 
-  Package,
   Building2,
-  Car,
   Smartphone,
-  Home,
-  GraduationCap,
-  Heart,
-  ShoppingCart,
   CheckCircle,
   Clock,
   Calculator,
   Users,
-  TrendingUp,
   Shield
 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
+import { useAuth } from "../contexts/AuthContext"
 
 export default function Programs() {
+  const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
   const [selectedProgram, setSelectedProgram] = useState(null)
 
   const loanPrograms = [
     {
-      id: 'business-loans',
-      title: 'Business Loans',
-      subtitle: 'Grow your business with flexible financing',
+      id: 'negosyoko-loan',
+      title: 'NegosyoKo Loan',
+      subtitle: 'Pandagdag kapital sa negosyo',
       icon: Building2,
       color: 'bg-blue-500',
       lightColor: 'bg-blue-50',
-      amount: '₱10,000 - ₱500,000',
-      term: '6 - 60 months',
-      rate: '2.5% monthly',
+      amount: '₱15,000 - ₱500,000',
+      term: '1-5 banking days approval',
+      rate: 'Abot-kayang interest',
       features: [
-        'Working capital financing',
-        'Equipment purchase',
-        'Inventory funding',
-        'Business expansion',
-        'No collateral required up to ₱100k'
+        'Abot-kayang loan para sa Self-Employed Micro Entrepreneurs (SEME)',
+        'Mabilis na approval - 1-5 banking days',
+        'Flexible payment terms (weekly, twice a month, monthly)',
+        'Sakto ang loan amount para sa negosyo',
+        'BIDA Program rewards for referrals'
       ],
       requirements: [
-        'Valid government ID',
-        'Business permit or registration',
-        'Bank statements (3 months)',
-        'Proof of business income'
+        'Valid ID',
+        'Utility Bill',
+        'Barangay or Mayor\'s Permit'
       ],
       eligibility: [
-        'Filipino citizen, 21-65 years old',
-        'Operating business for at least 6 months',
-        'Monthly business income of ₱15,000+',
-        'Good credit standing'
+        'Self-Employed Micro Entrepreneurs (SEME)',
+        'May maliit na negosyo',
+        'Filipino citizen'
+      ],
+      paymentMethods: [
+        'BanKo Mobile App (Self-repayment)',
+        'BanKo Cash Agents',
+        'Automatic Debit Arrangement',
+        'Cash Pick-Up via Motorized Collector'
       ]
     },
     {
-      id: 'motorcycle-loans',
-      title: 'Motorcycle Loans',
-      subtitle: 'Own a motorcycle for personal or business use',
-      icon: Car,
+      id: 'instacashko-loan',
+      title: 'InstaCashKo Loan',
+      subtitle: 'Online Salary Loan - Mabilis at madali',
+      icon: Smartphone,
       color: 'bg-red-500',
       lightColor: 'bg-red-50',
-      amount: '₱25,000 - ₱200,000',
-      term: '12 - 36 months',
-      rate: '1.8% monthly',
+      amount: '₱2,000 - ₱250,000',
+      term: '7 days - 36 months',
+      rate: 'Max ACR: 90.95%',
       features: [
-        'Brand new and used motorcycles',
-        'For delivery riders and commuters',
-        'Motorcycle as collateral',
-        'Fast approval process',
-        'Flexible payment terms'
+        'Multi-purpose unsecured online personal cash loan',
+        'Fast and easy purely digital loan application',
+        'Instant cash for immediate needs',
+        'Use for bills payment, Instapay transfers, mobile load',
+        'Send money to other BanKo users'
       ],
       requirements: [
-        'Valid driver\'s license',
-        'Government-issued ID',
-        'Proof of income',
-        'Certificate of registration (for used)'
+        '1 Government-Issued ID',
+        '1 Month Latest Payslip, ITR, or COE with compensation details'
       ],
       eligibility: [
-        'Filipino citizen, 21-60 years old',
-        'Valid driver\'s license',
-        'Stable source of income',
-        'No bad credit history'
-      ]
-    },
-    {
-      id: 'gadget-loans',
-      title: 'Gadget Loans',
-      subtitle: 'Get the latest smartphones and gadgets',
-      icon: Smartphone,
-      color: 'bg-purple-500',
-      lightColor: 'bg-purple-50',
-      amount: '₱5,000 - ₱100,000',
-      term: '6 - 24 months',
-      rate: '2.0% monthly',
-      features: [
-        'Latest smartphones and tablets',
-        'Laptops and computers',
-        'Gaming consoles',
-        'Home appliances',
-        'Zero down payment options'
+        '18-60 years old',
+        'Gross Monthly Income of ₱12,000',
+        'At least 6 months work tenure',
+        'Salaried Filipinos'
       ],
-      requirements: [
-        'Valid government ID',
-        'Proof of income',
-        'Billing statement (address proof)',
-        'Employment certificate'
-      ],
-      eligibility: [
-        'Filipino citizen, 18-65 years old',
-        'Regular source of income',
-        'Good payment history',
-        'Verified contact information'
-      ]
-    },
-    {
-      id: 'home-improvement',
-      title: 'Home Improvement Loans',
-      subtitle: 'Upgrade and renovate your home',
-      icon: Home,
-      color: 'bg-green-500',
-      lightColor: 'bg-green-50',
-      amount: '₱15,000 - ₱300,000',
-      term: '12 - 48 months',
-      rate: '2.2% monthly',
-      features: [
-        'Home renovation and repairs',
-        'Appliance purchases',
-        'Furniture and fixtures',
-        'Solar panel installation',
-        'Flexible use of funds'
-      ],
-      requirements: [
-        'Property ownership documents',
-        'Valid government ID',
-        'Proof of income',
-        'Renovation quotations'
-      ],
-      eligibility: [
-        'Filipino citizen, homeowner',
-        'Stable monthly income',
-        '21-65 years old',
-        'Property as collateral'
-      ]
-    },
-    {
-      id: 'education-loans',
-      title: 'Education Loans',
-      subtitle: 'Invest in your future through education',
-      icon: GraduationCap,
-      color: 'bg-indigo-500',
-      lightColor: 'bg-indigo-50',
-      amount: '₱20,000 - ₱250,000',
-      term: '12 - 60 months',
-      rate: '1.5% monthly',
-      features: [
-        'Tuition fee financing',
-        'Vocational training courses',
-        'Professional certifications',
-        'Online learning programs',
-        'Grace period available'
-      ],
-      requirements: [
-        'School enrollment proof',
-        'Academic transcripts',
-        'Valid government ID',
-        'Co-maker (if required)'
-      ],
-      eligibility: [
-        'Filipino citizen student or parent',
-        'Enrolled in accredited institution',
-        'Good academic standing',
-        'Co-maker with stable income'
-      ]
-    },
-    {
-      id: 'emergency-loans',
-      title: 'Emergency Loans',
-      subtitle: 'Quick cash for urgent needs',
-      icon: Heart,
-      color: 'bg-orange-500',
-      lightColor: 'bg-orange-50',
-      amount: '₱5,000 - ₱50,000',
-      term: '3 - 24 months',
-      rate: '3.0% monthly',
-      features: [
-        'Medical emergencies',
-        'Urgent repairs',
-        'Family emergencies',
-        'Same-day approval possible',
-        'Minimal documentation'
-      ],
-      requirements: [
-        'Valid government ID',
-        'Proof of emergency need',
-        'Contact references',
-        'Source of income proof'
-      ],
-      eligibility: [
-        'Filipino citizen, 21-65 years old',
-        'Verifiable emergency need',
-        'Ability to repay',
-        'Clean credit record'
+      applicationProcess: [
+        'Download the BanKo Mobile App',
+        'Select Apply for a Loan, then InstaCashKo Loan',
+        'Input Loan Terms and Required Details',
+        'Scan ID and Face for KYC Verification',
+        'Complete Necessary Information',
+        'Wait for Approval and Loan Release'
       ]
     }
   ]
 
   const handleApplyNow = (programId) => {
-    // In a real app, this would navigate to application with pre-selected program
-    console.log(`Applying for program: ${programId}`)
-    // navigate(`/application?program=${programId}`)
+    // Check authentication status and redirect accordingly
+    if (isAuthenticated) {
+      navigate('/dashboard')
+    } else {
+      navigate('/signin')
+    }
   }
 
   const handleBackToHome = () => {
-    // navigate('/')
-    console.log('Navigating back to home')
+    navigate('/')
   }
 
   return (
@@ -245,24 +134,24 @@ export default function Programs() {
       <div className="container mx-auto px-4 py-8">
         {/* Page Header */}
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-slate-900 mb-4">Loan Programs</h2>
+          <h2 className="text-4xl font-bold text-slate-900 mb-4">BanKo Loan Products</h2>
           <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-            Choose from our flexible loan programs designed for Filipino micro-entrepreneurs and individuals
+            Discover BanKo's proven loan products designed for Filipino entrepreneurs and employees
           </p>
         </div>
 
         {/* Program Cards Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+        <div className="grid md:grid-cols-2 gap-8 mb-12 max-w-4xl mx-auto">
           {loanPrograms.map((program) => {
             const IconComponent = program.icon
             return (
               <Card 
                 key={program.id} 
-                className="p-6 hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1"
+                className="p-6 hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1 flex flex-col h-full"
                 onClick={() => setSelectedProgram(program)}
               >
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4">
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center gap-4 mb-4">
                     <div className={`p-3 ${program.color} rounded-lg`}>
                       <IconComponent className="w-6 h-6 text-white" />
                     </div>
@@ -272,7 +161,7 @@ export default function Programs() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 mb-4">
                     <div className="flex justify-between">
                       <span className="text-sm text-slate-600">Amount:</span>
                       <span className="text-sm font-medium text-slate-900">{program.amount}</span>
@@ -287,20 +176,20 @@ export default function Programs() {
                     </div>
                   </div>
 
-                  <div className="border-t border-slate-200 pt-4">
+                  <div className="border-t border-slate-200 pt-4 mb-4 flex-grow">
                     <h4 className="text-sm font-medium text-slate-900 mb-2">Key Features:</h4>
                     <ul className="space-y-1">
                       {program.features.slice(0, 3).map((feature, index) => (
-                        <li key={index} className="flex items-center gap-2 text-sm text-slate-600">
-                          <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
-                          <span>{feature}</span>
+                        <li key={index} className="flex items-start gap-2 text-sm text-slate-600">
+                          <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0 mt-0.5" />
+                          <span className="leading-tight">{feature}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
 
                   <Button 
-                    className="w-full bg-red-600 hover:bg-red-700 text-white"
+                    className="w-full bg-red-600 hover:bg-red-700 text-white mt-auto"
                     onClick={(e) => {
                       e.stopPropagation()
                       handleApplyNow(program.id)
@@ -378,9 +267,9 @@ export default function Programs() {
 
         {/* CTA Section */}
         <div className="text-center">
-          <h3 className="text-2xl font-bold text-slate-900 mb-4">Ready to Get Started?</h3>
+          <h3 className="text-2xl font-bold text-slate-900 mb-4">Ready to Apply for a BanKo Loan?</h3>
           <p className="text-lg text-slate-600 mb-6">
-            Join thousands of Filipinos who have achieved their dreams with SikAP
+            Join thousands of Filipinos who trust BanKo for their financial needs
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button 
@@ -388,7 +277,7 @@ export default function Programs() {
               className="bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-700 hover:to-amber-600 text-white"
               onClick={() => handleApplyNow('general')}
             >
-              Start Application
+              {isAuthenticated ? 'Go to Dashboard' : 'Sign In to Apply'}
             </Button>
             <Button 
               size="lg"
@@ -396,7 +285,7 @@ export default function Programs() {
               className="border-red-600 text-red-600 hover:bg-red-50"
               onClick={handleBackToHome}
             >
-              Learn More
+              Back to Home
             </Button>
           </div>
         </div>
@@ -485,6 +374,38 @@ export default function Programs() {
                   </ul>
                 </div>
 
+                {/* Payment Methods (for NegosyoKo) */}
+                {selectedProgram.paymentMethods && (
+                  <div>
+                    <h4 className="font-semibold text-slate-900 mb-3">Payment Methods</h4>
+                    <ul className="space-y-2">
+                      {selectedProgram.paymentMethods.map((method, index) => (
+                        <li key={index} className="flex items-center gap-2 text-sm text-slate-600">
+                          <Calculator className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          <span>{method}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Application Process (for InstaCashKo) */}
+                {selectedProgram.applicationProcess && (
+                  <div>
+                    <h4 className="font-semibold text-slate-900 mb-3">Application Process</h4>
+                    <ul className="space-y-2">
+                      {selectedProgram.applicationProcess.map((step, index) => (
+                        <li key={index} className="flex items-center gap-2 text-sm text-slate-600">
+                          <div className="w-5 h-5 bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
+                            {index + 1}
+                          </div>
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <div className="flex gap-3 pt-4 border-t border-slate-200">
                   <Button 
                     className="flex-1 bg-red-600 hover:bg-red-700 text-white"
@@ -493,7 +414,7 @@ export default function Programs() {
                       setSelectedProgram(null)
                     }}
                   >
-                    Apply for This Program
+                    Apply Now
                   </Button>
                   <Button 
                     variant="outline"

@@ -1,57 +1,49 @@
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { Button } from "./ui/button"
-import { Card } from "./ui/card"
-import { Badge } from "./ui/badge"
+// client/src/components/PreLoanApplication.jsx
+// Updated for Async Processing - No More AI Decision Modal
+
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import webhookService from '../services/webhookService'
+import { Button } from './ui/button'
+import { Card } from './ui/card'
 import { 
   ArrowLeft, 
-  DollarSign,
-  CheckCircle,
-  AlertCircle,
+  CheckCircle, 
+  DollarSign, 
+  Calendar,
   Clock,
-  FileText,
-  Calculator
-} from "lucide-react"
-import { useAuth } from "../contexts/AuthContext"
+  Mail
+} from 'lucide-react'
 
 export default function PreLoanApplication() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  
+  // State variables - Simplified for async processing
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  
+  const [submissionResult, setSubmissionResult] = useState(null)
   const [loanData, setLoanData] = useState({
     loanAmount: '',
     loanPurpose: '',
     loanTenor: '',
-    repaymentFrequency: '',
-    urgency: '',
+    repaymentFrequency: 'monthly',
+    urgency: 'medium',
     additionalInfo: ''
   })
 
-  const loanAmounts = [
-    { value: "10000", label: "₱10,000" },
-    { value: "25000", label: "₱25,000" },
-    { value: "50000", label: "₱50,000" },
-    { value: "75000", label: "₱75,000" },
-    { value: "100000", label: "₱100,000" },
-    { value: "150000", label: "₱150,000" },
-    { value: "200000", label: "₱200,000" },
-    { value: "300000", label: "₱300,000" },
-    { value: "500000", label: "₱500,000" }
-  ]
-
-  const loanPurposes = [
-    "Working capital",
-    "Business expansion", 
-    "Purchase of equipment/motor vehicles",
-    "Purchase of inventory",
-    "Emergency expenses",
-    "Home improvement",
-    "Education",
-    "Medical expenses",
-    "Debt consolidation",
-    "Others"
+  // Options arrays
+  const loanPurposeOptions = [
+    { value: "working_capital", label: "Working Capital" },
+    { value: "business_expansion", label: "Business Expansion" },
+    { value: "purchase_equipment_vehicle", label: "Purchase Equipment/Vehicle" },
+    { value: "purchase_inventory", label: "Purchase Inventory" },
+    { value: "emergency_expenses", label: "Emergency Expenses" },
+    { value: "home_improvement", label: "Home Improvement" },
+    { value: "education", label: "Education" },
+    { value: "medical_expenses", label: "Medical Expenses" },
+    { value: "debt_consolidation", label: "Debt Consolidation" },
+    { value: "others", label: "Others" }
   ]
 
   const tenorOptions = [
@@ -64,6 +56,7 @@ export default function PreLoanApplication() {
     { value: "60", label: "60 months" }
   ]
 
+  // Event handlers
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setLoanData(prev => ({
@@ -77,331 +70,468 @@ export default function PreLoanApplication() {
     setLoading(true)
 
     try {
-      // Simulate API call to submit pre-loan application
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Get the current authenticated user
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser()
       
-      // Store loan application data
-      const applicationData = {
-        ...loanData,
-        applicantId: user.id,
-        applicantName: `${user.firstName} ${user.lastName}`,
-        applicationId: `SLN-${Date.now()}`,
-        status: 'pending_review',
-        submittedAt: new Date().toISOString(),
-        estimatedProcessingTime: '24-48 hours'
+      if (userError) {
+        throw new Error('User authentication error: ' + userError.message)
       }
       
-      // Store in localStorage for demo
+      if (!currentUser) {
+        throw new Error('User not authenticated')
+      }
+
+      console.log('Submitting preloan application via async webhook...')
+
+      // Use the webhook service to submit the application
+      const webhookResult = await webhookService.submitPreLoanApplication(currentUser, loanData)
+      
+      console.log('Async webhook response:', webhookResult)
+
+      // Store the submission result
+      setSubmissionResult(webhookResult)
+
+      // Save to localStorage for tracking
+      const applicationData = {
+        ...loanData,
+        applicantId: currentUser.id,
+        applicantName: `${currentUser.user_metadata?.firstName || ''} ${currentUser.user_metadata?.lastName || ''}`.trim(),
+        applicationId: webhookResult.applicationId || `SLN-${Date.now()}`,
+        status: webhookResult.status || 'processing',
+        submittedAt: new Date().toISOString(),
+        estimatedProcessingTime: webhookResult.estimatedTime || '2-5 minutes',
+        message: webhookResult.message,
+        nextSteps: webhookResult.nextSteps || [],
+        submissionMethod: 'async_webhook'
+      }
+      
       const existingApplications = JSON.parse(localStorage.getItem('loan_applications') || '[]')
       existingApplications.push(applicationData)
       localStorage.setItem('loan_applications', JSON.stringify(existingApplications))
       
+      // Show success page
       setSubmitted(true)
+      
     } catch (error) {
-      alert('Failed to submit application. Please try again.')
+      console.error('Error submitting loan application:', error)
+      alert(`Failed to submit application: ${error.message}. Please try again or contact support.`)
     } finally {
       setLoading(false)
     }
   }
 
-  if (submitted) {
+  const handleBackToHome = () => {
+    navigate('/dashboard')  // Changed from navigate('/') to navigate('/dashboard')
+  }
+
+  // Test functions (unchanged)
+  const testWebhookConnection = async () => {
+    try {
+      console.log('Testing webhook connection...')
+      const result = await webhookService.testWebhook('preloan-application')
+      
+      if (result.success) {
+        alert('Webhook connection successful!')
+        console.log('Test result:', result.result)
+      } else {
+        alert(`Webhook test failed: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Webhook test error:', error)
+      alert(`Webhook test error: ${error.message}`)
+    }
+  }
+
+  const debugWebhook = () => {
+    console.log('🔍 Environment Debug:', {
+      webhookUrl: process.env.REACT_APP_N8N_WEBHOOK_URL,
+      hasAuthToken: !!process.env.REACT_APP_N8N_AUTH_TOKEN,
+      supabaseUrl: process.env.REACT_APP_SUPABASE_URL,
+      nodeEnv: process.env.NODE_ENV
+    });
+    
+    alert(`Webhook URL: ${process.env.REACT_APP_N8N_WEBHOOK_URL || 'NOT SET'}`);
+  }
+
+  const testDirectFetch = async () => {
+    try {
+      console.log('Testing direct fetch to n8n...');
+      
+      const testUrl = `${process.env.REACT_APP_N8N_WEBHOOK_URL}/preloan-application`;
+      console.log('Test URL:', testUrl);
+      
+      const response = await fetch(testUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          test: true,
+          message: 'Direct test from React',
+          user: { id: 'test-user', email: 'test@example.com' },
+          loanData: { loan_amount: 10000, loan_purpose: 'test' }
+        })
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Success result:', result);
+        alert('Direct fetch SUCCESS! Check console for details.');
+      } else {
+        const errorText = await response.text();
+        console.log('Error response:', errorText);
+        alert(`Direct fetch failed: ${response.status} ${response.statusText}`);
+      }
+      
+    } catch (error) {
+      console.error('Direct fetch error:', error);
+      alert(`Direct fetch error: ${error.message}`);
+    }
+  }
+
+  // Enhanced Loading Component
+  const ProcessingLoader = () => {
+    if (!loading) return null
+    
     return (
-      <div className="min-h-screen bg-slate-50">
-        {/* Header */}
-        <header className="bg-white border-b border-slate-200">
-          <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-            <Button 
-              variant="ghost" 
-              onClick={() => navigate('/')} 
-              className="text-slate-600 hover:text-red-600"
-            >
-              <ArrowLeft className="w-5 h-5 mr-2" />
-              Back to Home
-            </Button>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-red-600">SikAP</h1>
-              <Badge variant="secondary" className="bg-amber-500 text-white">
-                Powered by BPI BanKo
-              </Badge>
+      <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-40">
+        <div className="bg-white rounded-lg p-6 shadow-xl max-w-md w-full mx-4">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <h3 className="font-medium text-lg mb-2">Submitting your application...</h3>
+            <p className="text-sm text-slate-600 mb-4">Saving to our secure system</p>
+            <div className="flex items-center justify-center gap-1">
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
             </div>
-          </div>
-        </header>
-
-        {/* Success Message */}
-        <div className="container mx-auto px-4 py-12">
-          <div className="max-w-2xl mx-auto">
-            <Card className="p-8 shadow-lg text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="w-8 h-8 text-green-600" />
-              </div>
-              
-              <h2 className="text-2xl font-bold text-slate-900 mb-4">Application Submitted Successfully!</h2>
-              <p className="text-slate-600 mb-6">
-                Your pre-loan application has been received and is now under review by our AI-powered system.
-              </p>
-              
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-6">
-                <h3 className="font-medium text-blue-900 mb-2">What happens next?</h3>
-                <div className="text-sm text-blue-700 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    <span>AI review: 5-15 minutes</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    <span>Document request: If approved</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calculator className="w-4 h-4" />
-                    <span>Final approval: 24-48 hours</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4 text-left mb-6">
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-slate-900 mb-2">Application Details</h4>
-                  <div className="text-sm text-slate-600 space-y-1">
-                    <div>Amount: ₱{Number(loanData.loanAmount).toLocaleString()}</div>
-                    <div>Purpose: {loanData.loanPurpose}</div>
-                    <div>Tenor: {loanData.loanTenor} months</div>
-                  </div>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-slate-900 mb-2">Applicant</h4>
-                  <div className="text-sm text-slate-600 space-y-1">
-                    <div>Name: {user.firstName} {user.lastName}</div>
-                    <div>Email: {user.email}</div>
-                    <div>Status: Pending Review</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button 
-                  onClick={() => navigate('/')}
-                  className="bg-red-600 hover:bg-red-700 text-white"
-                >
-                  Return to Home
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => navigate('/dashboard')}
-                  className="border-red-600 text-red-600 hover:bg-red-50"
-                >
-                  View Application Status
-                </Button>
-              </div>
-            </Card>
           </div>
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate('/')} 
-            className="text-slate-600 hover:text-red-600"
-          >
-            <ArrowLeft className="w-5 h-5 mr-2" />
-            Back to Home
-          </Button>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-red-600">SikAP</h1>
-            <Badge variant="secondary" className="bg-amber-500 text-white">
-              Powered by BPI BanKo
-            </Badge>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 shadow-lg">
+  // Success page with async processing info
+  if (submitted && submissionResult) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-amber-50">
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          <Card className="p-8">
+            {/* Success Header */}
             <div className="text-center mb-8">
-              <DollarSign className="w-12 h-12 text-red-600 mx-auto mb-3" />
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Loan Application</h2>
-              <p className="text-slate-600">Tell us what you need funding for</p>
+              <CheckCircle className="w-20 h-20 text-green-600 mx-auto mb-4" />
+              <h2 className="text-3xl font-bold text-slate-900 mb-2">Application Submitted Successfully!</h2>
+              <p className="text-lg text-slate-600">
+                {submissionResult.message || 'Your application is being processed by our AI system'}
+              </p>
             </div>
 
-            {/* User Info Display */}
-            <div className="bg-green-50 p-4 rounded-lg border border-green-200 mb-6">
-              <h3 className="font-medium text-green-900 mb-2">Applicant Information</h3>
-              <div className="text-sm text-green-700">
-                <div>Name: {user.firstName} {user.lastName}</div>
-                <div>Email: {user.email}</div>
-                <div>Profile Status: {user.accountStatus === 'verified' ? '✅ Verified' : '⏳ Pending Verification'}</div>
+            {/* Application Details */}
+            <div className="bg-slate-50 rounded-lg p-6 mb-6">
+              <h3 className="font-semibold text-slate-800 mb-4">Application Details</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-slate-600">Application ID:</span>
+                  <div className="font-mono font-medium">{submissionResult.applicationId}</div>
+                </div>
+                <div>
+                  <span className="text-slate-600">Status:</span>
+                  <div className="font-medium capitalize">{submissionResult.status}</div>
+                </div>
+                <div>
+                  <span className="text-slate-600">Amount:</span>
+                  <div className="font-medium">₱{Number(loanData.loanAmount || 0).toLocaleString()}</div>
+                </div>
+                <div>
+                  <span className="text-slate-600">Processing Time:</span>
+                  <div className="font-medium">{submissionResult.estimatedTime}</div>
+                </div>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Loan Amount */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Loan Amount (₱) *
-                </label>
-                <select 
-                  name="loanAmount" 
-                  value={loanData.loanAmount} 
-                  onChange={handleInputChange}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
-                  required
-                >
-                  <option value="">Select loan amount</option>
-                  {loanAmounts.map((amount) => (
-                    <option key={amount.value} value={amount.value}>{amount.label}</option>
+            {/* Next Steps */}
+            {submissionResult.nextSteps && submissionResult.nextSteps.length > 0 && (
+              <div className="mb-6">
+                <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  What Happens Next?
+                </h3>
+                <ul className="space-y-3">
+                  {submissionResult.nextSteps.map((step, index) => (
+                    <li key={index} className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
+                      <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
+                        {index + 1}
+                      </div>
+                      <span className="text-slate-700">{step}</span>
+                    </li>
                   ))}
-                </select>
-              </div>
-
-              {/* Loan Purpose */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Loan Purpose *
-                </label>
-                <select 
-                  name="loanPurpose" 
-                  value={loanData.loanPurpose} 
-                  onChange={handleInputChange}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
-                  required
-                >
-                  <option value="">Select purpose</option>
-                  {loanPurposes.map((purpose) => (
-                    <option key={purpose} value={purpose}>{purpose}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                {/* Loan Tenor */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Loan Tenor *
-                  </label>
-                  <select 
-                    name="loanTenor" 
-                    value={loanData.loanTenor} 
-                    onChange={handleInputChange}
-                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
-                    required
-                  >
-                    <option value="">Select tenor</option>
-                    {tenorOptions.map((tenor) => (
-                      <option key={tenor.value} value={tenor.value}>{tenor.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Repayment Frequency */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Repayment Frequency *
-                  </label>
-                  <select 
-                    name="repaymentFrequency" 
-                    value={loanData.repaymentFrequency} 
-                    onChange={handleInputChange}
-                    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
-                    required
-                  >
-                    <option value="">Select frequency</option>
-                    <option value="Weekly">Weekly</option>
-                    <option value="Monthly">Monthly</option>
-                    <option value="Quarterly">Quarterly</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Urgency */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  How urgent is this loan? *
-                </label>
-                <select 
-                  name="urgency" 
-                  value={loanData.urgency} 
-                  onChange={handleInputChange}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
-                  required
-                >
-                  <option value="">Select urgency</option>
-                  <option value="Low">Low - I can wait 1-2 weeks</option>
-                  <option value="Medium">Medium - I need it within a week</option>
-                  <option value="High">High - I need it within 2-3 days</option>
-                  <option value="Emergency">Emergency - I need it ASAP</option>
-                </select>
-              </div>
-
-              {/* Additional Information */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Additional Information
-                </label>
-                <textarea 
-                  name="additionalInfo" 
-                  value={loanData.additionalInfo} 
-                  onChange={handleInputChange}
-                  rows={4}
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500" 
-                  placeholder="Tell us more about your loan needs, business plans, or any other relevant information..."
-                />
-              </div>
-
-              {/* Loan Summary */}
-              {loanData.loanAmount && loanData.loanTenor && (
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <h3 className="font-medium text-blue-900 mb-2">Loan Summary</h3>
-                  <div className="text-sm text-blue-700 space-y-1">
-                    <div>Requested Amount: ₱{Number(loanData.loanAmount).toLocaleString()}</div>
-                    <div>Loan Tenor: {loanData.loanTenor} months</div>
-                    <div>Estimated Monthly Payment: ₱{Math.round((Number(loanData.loanAmount) * 1.15) / Number(loanData.loanTenor)).toLocaleString()}</div>
-                    <div className="text-xs text-blue-600 mt-2">
-                      *Estimated with 15% annual interest rate. Final terms subject to approval.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Important Notes */}
-              <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-                <h3 className="font-medium text-amber-900 mb-2">What happens after submission?</h3>
-                <ul className="text-sm text-amber-700 space-y-1">
-                  <li>• AI-powered initial review (5-15 minutes)</li>
-                  <li>• You'll receive an email with the pre-approval status</li>
-                  <li>• If approved, you'll get access to document submission portal</li>
-                  <li>• Final approval typically takes 24-48 hours after document submission</li>
                 </ul>
               </div>
+            )}
 
-              {/* Submit Button */}
-              <Button
-                type="submit"
-                className="w-full bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-700 hover:to-amber-600 text-white shadow-lg py-3"
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                    Submitting Application...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Submit Loan Application
-                  </>
-                )}
+            {/* Important Notice */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center gap-2 mb-2">
+                <Mail className="w-5 h-5 text-amber-600" />
+                <h4 className="font-medium text-amber-900">Important Notice</h4>
+              </div>
+              <p className="text-sm text-amber-700">
+                Our AI system is now reviewing your application. You'll receive an email notification 
+                with the decision within {submissionResult.estimatedTime}. Please check your email regularly 
+                and ensure it's not in your spam folder.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-3">
+              <Button onClick={handleBackToHome} className="w-full">
+                Back to Home
               </Button>
-            </form>
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => {
+                  // TODO: Navigate to application status page
+                  alert('Application status tracking coming soon!')
+                }}
+              >
+                Track Application Status
+              </Button>
+            </div>
           </Card>
         </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-amber-50">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Button
+            onClick={handleBackToHome}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Home
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Pre-Loan Application</h1>
+            <p className="text-slate-600">Quick assessment for loan eligibility with AI-powered review</p>
+          </div>
+        </div>
+
+        {/* Test buttons - only shows in development */}
+        {process.env.REACT_APP_ENABLE_TEST_WEBHOOK_BUTTON === 'true' && (
+          <div className="mb-4 flex gap-2 flex-wrap">
+            <Button 
+              onClick={testWebhookConnection}
+              variant="outline"
+              className="text-sm"
+            >
+              Test Webhook Connection
+            </Button>
+            <Button 
+              onClick={debugWebhook}
+              variant="outline"
+              className="text-sm"
+            >
+              Check Environment
+            </Button>
+            <Button 
+              onClick={testDirectFetch}
+              variant="outline"
+              className="text-sm"
+            >
+              Test Direct Fetch
+            </Button>
+          </div>
+        )}
+
+        <Card className="p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Loan Amount */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Loan Amount (PHP) *
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
+                <input
+                  type="number"
+                  name="loanAmount"
+                  value={loanData.loanAmount}
+                  onChange={handleInputChange}
+                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="Enter loan amount"
+                  min="5000"
+                  max="500000"
+                  required
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Minimum: ₱5,000 | Maximum: ₱500,000</p>
+            </div>
+
+            {/* Loan Purpose */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Loan Purpose *
+              </label>
+              <select
+                name="loanPurpose"
+                value={loanData.loanPurpose}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                required
+              >
+                <option value="">Select loan purpose</option>
+                {loanPurposeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Loan Tenor */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Loan Tenor *
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
+                <select
+                  name="loanTenor"
+                  value={loanData.loanTenor}
+                  onChange={handleInputChange}
+                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  required
+                >
+                  <option value="">Select tenor</option>
+                  {tenorOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Repayment Frequency */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Repayment Frequency *
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { value: 'weekly', label: 'Weekly' },
+                  { value: 'bi-weekly', label: 'Bi-weekly' },
+                  { value: 'monthly', label: 'Monthly' },
+                  { value: 'quarterly', label: 'Quarterly' }
+                ].map((option) => (
+                  <label key={option.value} className="flex items-center">
+                    <input
+                      type="radio"
+                      name="repaymentFrequency"
+                      value={option.value}
+                      checked={loanData.repaymentFrequency === option.value}
+                      onChange={handleInputChange}
+                      className="mr-3"
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Urgency */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                How urgent is this loan? *
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { value: 'low', label: 'Low Priority', color: 'bg-green-50 border-green-200 text-green-700' },
+                  { value: 'medium', label: 'Medium Priority', color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
+                  { value: 'high', label: 'High Priority', color: 'bg-orange-50 border-orange-200 text-orange-700' },
+                  { value: 'emergency', label: 'Emergency', color: 'bg-red-50 border-red-200 text-red-700' }
+                ].map((option) => (
+                  <label
+                    key={option.value}
+                    className={`flex items-center justify-center p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                      loanData.urgency === option.value
+                        ? option.color
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="urgency"
+                      value={option.value}
+                      checked={loanData.urgency === option.value}
+                      onChange={handleInputChange}
+                      className="sr-only"
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Additional Information */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Additional Information (Optional)
+              </label>
+              <textarea
+                name="additionalInfo"
+                value={loanData.additionalInfo}
+                onChange={handleInputChange}
+                rows={4}
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                placeholder="Any additional information about your loan request..."
+              />
+            </div>
+
+            {/* Important Notes - Updated for async processing */}
+            <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+              <h3 className="font-medium text-amber-900 mb-2">What happens after submission?</h3>
+              <ul className="text-sm text-amber-700 space-y-1">
+                <li>• Immediate confirmation of submission</li>
+                <li>• AI-powered review starts in the background (2-5 minutes)</li>
+                <li>• Email notification with decision results</li>
+                <li>• If approved, access to document submission portal</li>
+              </ul>
+            </div>
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              className="w-full bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-700 hover:to-amber-600 text-white shadow-lg py-3"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Submitting Application...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Submit Loan Application
+                </>
+              )}
+            </Button>
+          </form>
+        </Card>
+
+        {/* Processing Loader */}
+        <ProcessingLoader />
       </div>
     </div>
   )
