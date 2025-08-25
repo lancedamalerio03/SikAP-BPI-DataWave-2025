@@ -197,8 +197,8 @@ export default function SignIn() {
               <h4 className="font-medium text-blue-900 mb-2">Demo Credentials</h4>
               <p className="text-sm text-blue-700 mb-2">For testing, use any email and password combination:</p>
               <div className="text-xs text-blue-600 font-mono">
-                Email: demo@sikap.com<br />
-                Password: demo123
+                Email: eskwelabsautomation@gmail.com<br />
+                Password: sikap123
               </div>
             </div>
 
