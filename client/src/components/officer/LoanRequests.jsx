@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import webhookService from '../../services/webhookService'; // correct relative path from /components/officer
+import ApplicantDetailsModal from './ApplicantDetailsModal';
 
 const dashboardUtils = {
   // Load loan requests + merge user profile fields (no DB schema change required)
@@ -232,6 +233,8 @@ function LoanRequests() {
   const [analytics, setAnalytics] = useState(null);
   const [error, setError] = useState(null);
   const [creatingPlanId, setCreatingPlanId] = useState(null);
+  const [selectedApplicantId, setSelectedApplicantId] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -303,6 +306,16 @@ function LoanRequests() {
     } finally {
       setCreatingPlanId(null);
     }
+  };
+
+  const handleViewApplicant = (applicationId) => {
+    setSelectedApplicantId(applicationId);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedApplicantId(null);
   };
 
   const filtered = loanRequests.filter(r => {
@@ -461,7 +474,11 @@ function LoanRequests() {
                     </button>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <button className="p-2 rounded-md border hover:bg-gray-50" title="View">
+                      <button 
+                        className="p-2 rounded-md border hover:bg-gray-50" 
+                        title="View"
+                        onClick={() => handleViewApplicant(r.id)}
+                      >
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
@@ -502,6 +519,14 @@ function LoanRequests() {
           </tbody>
         </table>
       </div>
+
+      {/* Applicant Details Modal */}
+      <ApplicantDetailsModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        applicantId={selectedApplicantId}
+        applicationType="loan"
+      />
     </div>
   );
 }

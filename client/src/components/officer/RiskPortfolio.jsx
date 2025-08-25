@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import ApplicantDetailsModal from './ApplicantDetailsModal';
 
 // Utility functions for Risk Portfolio
 const riskUtils = {
@@ -158,6 +159,8 @@ function RiskPortfolio() {
     F: 0,
     aml_flagged: 0,
   });
+  const [selectedApplicantId, setSelectedApplicantId] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -177,6 +180,16 @@ function RiskPortfolio() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewApplicant = (userId) => {
+    setSelectedApplicantId(userId);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedApplicantId(null);
   };
 
   // Filter risk profiles
@@ -334,11 +347,12 @@ function RiskPortfolio() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center space-x-2">
-                        <button className="text-blue-600 hover:text-blue-900" title="View Profile">
+                        <button 
+                          className="text-blue-600 hover:text-blue-900" 
+                          title="View Profile"
+                          onClick={() => handleViewApplicant(profile.id)}
+                        >
                           <Eye className="h-4 w-4" />
-                        </button>
-                        <button className="text-purple-600 hover:text-purple-900" title="Risk Analysis">
-                          <BarChart3 className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -354,6 +368,14 @@ function RiskPortfolio() {
           </div>
         )}
       </div>
+
+      {/* Applicant Details Modal */}
+      <ApplicantDetailsModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        applicantId={selectedApplicantId}
+        applicationType="risk"
+      />
     </div>
   );
 }
