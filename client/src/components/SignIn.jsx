@@ -195,7 +195,7 @@ export default function SignIn() {
             {/* Demo Credentials */}
             <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h4 className="font-medium text-blue-900 mb-2">Demo Credentials</h4>
-              <p className="text-sm text-blue-700 mb-2">For testing, use any email and password combination:</p>
+              <p className="text-sm text-blue-700 mb-2">For testing, use this email and password combinations. Risk Profile Unavailable for First-time users.</p>
               <div className="text-xs text-blue-600 font-mono">
                 Email: eskwelabsautomation@gmail.com<br />
                 Password: sikap123
